@@ -1,0 +1,160 @@
+from datetime import datetime, timedelta, timezone
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field, StringConstraints
+from typing import Annotated
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+from app.core.security import current_admin, require_sudo
+from app.core.subtokens import issue_subscription_token
+from app.db.models import Admin, User, Service, ServiceItem, Panel, PanelInbound, UserPanelAccount, SyncTask, AuditLog, UsageLog
+from app.db.session import get_db
+from app.core.plans import apply_next_plan
+router=APIRouter(prefix='/api',tags=['users'])
+Username = Annotated[str, StringConstraints(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9_.-]+$")]
+class UserIn(BaseModel):
+ username:Username; service_id:int; data_limit:int|None=Field(default=None,ge=0); duration_days:int|None=Field(default=30,ge=1,le=36500); expire:datetime|None=None; status:str='active'; on_hold:bool=False; data_limit_reset_strategy:str='no_reset'; note:str=''; next_plan:dict|None=None
+
+def allowed(admin:Admin, service_id:int):
+ if admin.role!='sudo' and service_id not in (admin.allowed_services or []): raise HTTPException(403,detail={'detail':'به این سرویس دسترسی ندارید','code':'SERVICE_FORBIDDEN'})
+def user_scope(db,admin):
+ q=db.query(User)
+ if admin.role!='sudo': q=q.filter(User.admin_id==admin.id)
+ return q
+@router.get('/users')
+def list_users(q:str|None=None,status:str|None=None,admin_id:int|None=None,limit:int=Query(50,ge=1,le=200),offset:int=Query(0,ge=0),admin:Admin=Depends(current_admin),db:Session=Depends(get_db)):
+ query=user_scope(db,admin)
+ if q: query=query.filter(User.username.ilike(f'%{q}%'))
+ if status: query=query.filter(User.status==status)
+ if admin.role=='sudo' and admin_id is not None: query=query.filter(User.admin_id==admin_id)
+ total=query.count(); rows=query.order_by(User.id.desc()).offset(offset).limit(limit).all()
+ return {'total':total,'items':[serialize_user(u) for u in rows]}
+def serialize_user(u):
+ token=issue_subscription_token(u.username,int(u.created_at.timestamp()),u.sub_token_version)
+ return {'id':u.id,'username':u.username,'admin_id':u.admin_id,'service_id':u.service_id,'status':u.status,'data_limit':u.data_limit,'used_traffic':u.used_traffic,'expire':u.expire,'note':u.note,'created_at':u.created_at,'subscription_url':f'/sub/{token}'}
+@router.post('/user')
+def create_user(body:UserIn,admin:Admin=Depends(current_admin),db:Session=Depends(get_db)):
+ allowed(admin,body.service_id)
+ service=db.get(Service,body.service_id)
+ if not service or not service.enabled: raise HTTPException(404,detail={'detail':'سرویس فعال پیدا نشد','code':'SERVICE_NOT_FOUND'})
+ if db.query(User).filter(func.lower(User.username)==body.username.lower()).first(): raise HTTPException(409,detail={'detail':'نام کاربری تکراری است','code':'USERNAME_EXISTS'})
+ if body.status not in ('active','disabled','limited','expired','on_hold'): raise HTTPException(422,detail={'detail':'وضعیت نامعتبر است','code':'INVALID_STATUS'})
+ if admin.role!='sudo':
+  count=db.query(User).filter_by(admin_id=admin.id).count()
+  total=db.query(func.coalesce(func.sum(User.data_limit),0)).filter_by(admin_id=admin.id).scalar() or 0
+  if admin.max_users is not None and count>=admin.max_users: raise HTTPException(403,detail={'detail':'سهمیه تعداد کاربران تمام شده','code':'QUOTA_USERS'})
+  if admin.max_user_traffic is not None and (body.data_limit is None or body.data_limit>admin.max_user_traffic): raise HTTPException(403,detail={'detail':'حجم نامحدود یا بیش از سهمیه مجاز نیست','code':'QUOTA_USER_TRAFFIC'})
+  if admin.max_total_traffic is not None and (body.data_limit is None or total+body.data_limit>admin.max_total_traffic): raise HTTPException(403,detail={'detail':'سهمیه مجموع حجم تمام شده یا حجم نامحدود مجاز نیست','code':'QUOTA_TOTAL_TRAFFIC'})
+  if admin.max_user_days is not None and (body.duration_days is None or body.duration_days>admin.max_user_days): raise HTTPException(403,detail={'detail':'مدت نامحدود یا بیشتر از سهمیه مجاز نیست','code':'QUOTA_USER_DAYS'})
+ exp=None if body.on_hold else (body.expire or ((datetime.now(timezone.utc)+timedelta(days=body.duration_days)) if body.duration_days else None))
+ u=User(username=body.username,admin_id=admin.id,service_id=body.service_id,data_limit=body.data_limit,expire=exp,on_hold_expire_duration=(body.duration_days*86400 if body.on_hold and body.duration_days else None),status='on_hold' if body.on_hold else body.status,data_limit_reset_strategy=body.data_limit_reset_strategy,note=body.note,next_plan=body.next_plan)
+ db.add(u); db.flush()
+ items=db.query(ServiceItem).filter_by(service_id=service.id,enabled=True).all()
+ if not items: raise HTTPException(409,detail={'detail':'برای این سرویس پنل یا اینباندی تعریف نشده است','code':'SERVICE_EMPTY'})
+ seen=set()
+ for item in sorted(items,key=lambda x:x.priority):
+  p=db.get(Panel,item.panel_id)
+  if not p or not p.enabled or p.id in seen: continue
+  seen.add(p.id); remote=f'{p.username_prefix}{u.username}'
+  db.add(UserPanelAccount(user_id=u.id,panel_id=p.id,remote_username=remote,sync_state='pending'))
+  cached=db.query(PanelInbound).filter_by(panel_id=p.id).all()
+  selected=set(str(x) for x in (item.selected_items or []))
+  chosen=[x for x in cached if str(x.id) in selected or str(x.remote_id) in selected or (x.tag and x.tag in selected)]
+  if not selected: chosen=cached
+  if not chosen: raise HTTPException(409,detail={'detail':f'برای پنل {p.name} اینباندی در کش نیست؛ ابتدا همگام‌سازی کنید','code':'PANEL_INBOUNDS_EMPTY'})
+  inbound_map={}
+  protocols=set()
+  for inbound in chosen:
+   protocol=(inbound.protocol or 'vless').lower()
+   protocols.add(protocol)
+   if inbound.tag: inbound_map.setdefault(protocol,[]).append(inbound.tag)
+  proxies={protocol:{} for protocol in (protocols or {'vless'})}
+  payload={'username':remote,'data_limit':u.data_limit,'expire':int(exp.timestamp()) if exp else 0,'status':u.status,'note':u.note,'inbounds':inbound_map,'proxies':proxies}
+  if p.type in ('rebecca','pasarguard'):
+   groups=[x for x in chosen if x.kind=='group']
+   if not groups: raise HTTPException(409,detail={'detail':f'برای پنل {p.name} سرویس انتخاب نشده است','code':'PANEL_SERVICE_REQUIRED'})
+   payload={k:v for k,v in payload.items() if k not in {'inbounds','proxies'}}; payload['service_id']=int(groups[0].remote_id)
+  db.add(SyncTask(user_id=u.id,panel_id=p.id,action='create',payload=payload))
+ db.add(AuditLog(actor_admin_id=admin.id,action='user.create',object_type='user',object_id=str(u.id),details={'username':u.username,'service_id':service.id})); db.commit(); db.refresh(u); return serialize_user(u)
+@router.get('/user/{username}')
+def get_user(username:str,admin:Admin=Depends(current_admin),db:Session=Depends(get_db)):
+ u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()
+ if not u: raise HTTPException(404,detail={'detail':'کاربر پیدا نشد','code':'USER_NOT_FOUND'})
+ return serialize_user(u)
+@router.put('/user/{username}')
+def update_user(username:str,body:dict,admin:Admin=Depends(current_admin),db:Session=Depends(get_db)):
+ u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()
+ if not u: raise HTTPException(404,detail={'detail':'کاربر پیدا نشد','code':'USER_NOT_FOUND'})
+ fields={'status','data_limit','expire','note','data_limit_reset_strategy','next_plan','on_hold_expire_duration','on_hold_timeout'}
+ if admin.role!='sudo' and 'data_limit' in body:
+  new_limit=body['data_limit']
+  if admin.max_user_traffic is not None and (new_limit is None or int(new_limit)>admin.max_user_traffic): raise HTTPException(403,detail={'detail':'حجم کاربر از سهمیه بیشتر است','code':'QUOTA_USER_TRAFFIC'})
+  if admin.max_total_traffic is not None:
+   current_total=db.query(func.coalesce(func.sum(User.data_limit),0)).filter(User.admin_id==admin.id,User.id!=u.id).scalar() or 0
+   if new_limit is None or current_total+int(new_limit)>admin.max_total_traffic: raise HTTPException(403,detail={'detail':'سهمیه مجموع حجم تمام شده','code':'QUOTA_TOTAL_TRAFFIC'})
+ for k,v in body.items():
+  if k not in fields: raise HTTPException(422,detail={'detail':f'فیلد مجاز نیست: {k}','code':'INVALID_FIELD'})
+  if k=='status' and v not in ('active','disabled','limited','expired','on_hold'): raise HTTPException(422,detail={'detail':'وضعیت نامعتبر است','code':'INVALID_STATUS'})
+  setattr(u,k,v)
+ if 'status' in body or 'data_limit' in body or 'expire' in body:
+  for a in db.query(UserPanelAccount).filter_by(user_id=u.id).all(): db.add(SyncTask(user_id=u.id,panel_id=a.panel_id,action='modify',payload={'username':a.remote_username,'status':u.status,'data_limit':u.data_limit,'expire':int(u.expire.timestamp()) if u.expire else 0}))
+ u.sub_token_version += 1
+ db.add(AuditLog(actor_admin_id=admin.id,action='user.update',object_type='user',object_id=str(u.id),details={'fields':list(body)})); db.commit(); return serialize_user(u)
+@router.delete('/user/{username}')
+def delete_user(username:str,admin:Admin=Depends(current_admin),db:Session=Depends(get_db)):
+ u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()
+ if not u: raise HTTPException(404,detail={'detail':'کاربر پیدا نشد','code':'USER_NOT_FOUND'})
+ accounts=db.query(UserPanelAccount).filter_by(user_id=u.id).all()
+ for a in accounts: db.add(SyncTask(user_id=None,panel_id=a.panel_id,action='delete',payload={'username':a.remote_username}))
+ for a in accounts: db.delete(a)
+ db.add(AuditLog(actor_admin_id=admin.id,action='user.delete',object_type='user',object_id=str(u.id),details={'username':u.username})); db.delete(u); db.commit(); return {'ok':True}
+@router.post('/user/{username}/reset')
+def reset_user(username:str,admin:Admin=Depends(current_admin),db:Session=Depends(get_db)):
+ u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()
+ if not u: raise HTTPException(404,detail={'detail':'کاربر پیدا نشد','code':'USER_NOT_FOUND'})
+ u.used_traffic=0
+ for a in db.query(UserPanelAccount).filter_by(user_id=u.id).all(): db.add(SyncTask(user_id=u.id,panel_id=a.panel_id,action='reset_usage',payload={'username':a.remote_username}))
+ db.add(AuditLog(actor_admin_id=admin.id,action='user.reset_usage',object_type='user',object_id=str(u.id),details={})); db.commit(); return {'ok':True}
+@router.post('/user/{username}/revoke_sub')
+def revoke_sub(username:str,admin:Admin=Depends(current_admin),db:Session=Depends(get_db)):
+ u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()
+ if not u: raise HTTPException(404,detail={'detail':'کاربر پیدا نشد','code':'USER_NOT_FOUND'})
+ u.sub_token_version+=1; u.sub_revoked_at=datetime.now(timezone.utc)
+ db.add(AuditLog(actor_admin_id=admin.id,action='user.revoke_sub',object_type='user',object_id=str(u.id),details={})); db.commit(); return {'ok':True}
+@router.get('/user/{username}/usage')
+def user_usage(username:str,admin:Admin=Depends(current_admin),db:Session=Depends(get_db)):
+ u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()
+ if not u: raise HTTPException(404,detail={'detail':'کاربر پیدا نشد','code':'USER_NOT_FOUND'})
+ logs=db.query(UsageLog).filter_by(user_id=u.id).order_by(UsageLog.id.desc()).limit(100).all()
+ return {'used_traffic':u.used_traffic,'data_limit':u.data_limit,'logs':[{'delta':x.delta,'total_after':x.total_after,'recorded_at':x.recorded_at} for x in logs]}
+@router.post('/user/{username}/active-next')
+def activate_next(username:str,admin:Admin=Depends(current_admin),db:Session=Depends(get_db)):
+ u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()
+ if not u: raise HTTPException(404,detail={'detail':'کاربر پیدا نشد','code':'USER_NOT_FOUND'})
+ if not u.next_plan: raise HTTPException(409,detail={'detail':'پلن بعدی تعریف نشده','code':'NO_NEXT_PLAN'})
+ plan=u.next_plan
+ try: new_limit,new_expire,remaining_added=apply_next_plan(u.data_limit,u.used_traffic,plan)
+ except (ValueError,TypeError): raise HTTPException(422,detail={'detail':'تعریف پلن بعدی نامعتبر است','code':'INVALID_NEXT_PLAN'})
+ u.data_limit=new_limit; u.used_traffic=0; u.expire=new_expire; u.status='active'; u.next_plan=None; u.sub_token_version+=1
+ for a in db.query(UserPanelAccount).filter_by(user_id=u.id).all(): db.add(SyncTask(user_id=u.id,panel_id=a.panel_id,action='modify',payload={'username':a.remote_username,'data_limit':u.data_limit,'expire':int(u.expire.timestamp()),'status':'active'}))
+ db.add(AuditLog(actor_admin_id=admin.id,action='user.active_next',object_type='user',object_id=str(u.id),details={'remaining_added':remaining_added})); db.commit(); return serialize_user(u)
+@router.post('/user/{username}/set-owner')
+def set_owner(username:str,body:dict,actor:Admin=Depends(require_sudo),db:Session=Depends(get_db)):
+ u=db.query(User).filter(func.lower(User.username)==username.lower()).first(); target=db.get(Admin,int(body.get('admin_id',0)))
+ if not u or not target: raise HTTPException(404,detail={'detail':'کاربر یا ادمین پیدا نشد','code':'NOT_FOUND'})
+ if target.role!='sudo' and u.service_id not in (target.allowed_services or []): raise HTTPException(403,detail={'detail':'ادمین مقصد به سرویس این کاربر دسترسی ندارد','code':'SERVICE_FORBIDDEN'})
+ u.admin_id=target.id; u.sub_token_version+=1; db.add(AuditLog(actor_admin_id=actor.id,action='user.set_owner',object_type='user',object_id=str(u.id),details={'admin_id':target.id})); db.commit(); return {'ok':True}
+@router.get('/users/expired')
+def expired_users(dry_run:bool=True,admin:Admin=Depends(require_sudo),db:Session=Depends(get_db)):
+ rows=db.query(User).filter(User.expire.is_not(None),User.expire<=datetime.now(timezone.utc)).all()
+ return {'dry_run':dry_run,'count':len(rows),'users':[u.username for u in rows]}
+@router.delete('/users/expired')
+def delete_expired(dry_run:bool=True,admin:Admin=Depends(require_sudo),db:Session=Depends(get_db)):
+ rows=db.query(User).filter(User.expire.is_not(None),User.expire<=datetime.now(timezone.utc)).all(); names=[u.username for u in rows]
+ if not dry_run:
+  for u in rows:
+   accounts=db.query(UserPanelAccount).filter_by(user_id=u.id).all()
+   for a in accounts: db.add(SyncTask(user_id=None,panel_id=a.panel_id,action='delete',payload={'username':a.remote_username}))
+   for a in accounts: db.delete(a)
+   db.delete(u)
+  db.add(AuditLog(actor_admin_id=admin.id,action='users.delete_expired',object_type='users',object_id='bulk',details={'count':len(rows)})); db.commit()
+ return {'dry_run':dry_run,'count':len(rows),'users':names}
