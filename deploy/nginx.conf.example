@@ -1,6 +1,6 @@
 server {
     listen 443 ssl http2;
-    server_name subhub.example.com;
+    server_name jinxdata.example.com;
     # Configure ssl_certificate and ssl_certificate_key with your certificate paths.
     add_header X-Content-Type-Options nosniff always;
     add_header X-Frame-Options DENY always;

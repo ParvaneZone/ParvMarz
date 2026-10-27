@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api", tags=["system"])
 
 @router.get("/health")
 def health():
-    return {"status": "ok", "service": "subhub"}
+    return {"status": "ok", "service": "jinx-data"}
 
 
 @router.get("/system/stats")

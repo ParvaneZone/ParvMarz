@@ -1,4 +1,4 @@
-# ParvMarz
+# Jinx Data
 
 Central subscription aggregation panel: connect Marzban, Marzdar, Marzyar, PasarGuard and Rebecca reseller/admin accounts, build services from them, and give users one standard subscription link.
 

@@ -39,10 +39,10 @@ def main():
         out["INITIAL_ADMIN_PASSWORD"] = saved["admin_password"]
     port = os.environ.get("PORT", "8000")
     url = os.environ.get("PUBLIC_BASE_URL", "")
-    if not url or "subhub.example.com" in url:
+    if not url or "jinxdata.example.com" in url:
         out["PUBLIC_BASE_URL"] = url = f"http://localhost:{port}"
     cors = os.environ.get("CORS_ORIGINS", "")
-    if not cors or "subhub.example.com" in cors:
+    if not cors or "jinxdata.example.com" in cors:
         out["CORS_ORIGINS"] = url
     if changed:
         store.write_text(json.dumps(saved)); store.chmod(0o600)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ParvMarz terminal menu. Run: parvmarz   (installed by install.sh)
+# Jinx Data terminal menu. Run: parvmarz   (installed by install.sh)
 set -uo pipefail
 export DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1
 SELF="$(readlink -f "${BASH_SOURCE[0]}")"
@@ -48,7 +48,7 @@ uninstall() {
 
 while true; do
   clear 2>/dev/null || true
-  echo "=== ParvMarz menu ($DIR) ==="
+  echo "=== Jinx Data menu ($DIR) ==="
   echo " 1) Status            9) Reset admin password"
   echo " 2) Logs (live)      10) Show generated admin login"
   echo " 3) Start            11) Clear login lock (restart)"

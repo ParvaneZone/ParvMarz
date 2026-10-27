@@ -4,7 +4,7 @@ from app.db.session import Base, engine, SessionLocal
 from app.db.models import Admin
 from app.core.security import hash_password
 
-app = typer.Typer(help="SubHub administration CLI")
+app = typer.Typer(help="Jinx Data administration CLI")
 
 @app.command()
 def init_db():

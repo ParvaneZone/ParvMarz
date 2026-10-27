@@ -3,7 +3,7 @@ from pydantic import model_validator
 
 
 class Settings(BaseSettings):
-    app_name: str = "SubHub"
+    app_name: str = "Jinx Data"
     environment: str = "development"
     database_url: str = "sqlite:///./data/subhub.db"
     jwt_secret: str = "development-only-change-me-32-characters"

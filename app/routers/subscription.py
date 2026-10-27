@@ -12,7 +12,7 @@ from app.db.session import SessionLocal
 from app.drivers.factory import build_driver
 from app.core.errors import short_error
 import logging
-log=logging.getLogger('parvmarz.sub')
+log=logging.getLogger('jinxdata.sub')
 _fetch_err:dict[int,str]={}
 from app.subscription.merge import deduplicate_links, apply_aliases, to_clash, to_singbox, to_v2ray_json
 from app.subscription.page import render_subscription_page
@@ -131,7 +131,7 @@ async def subscription(token:str,request:Request,client_type:str='v2ray'):
  parsed=deduplicate_links(links)
  if client_type=='v2ray' and _wants_page(request):
   nonce=secrets.token_urlsafe(16); sub_url=f"{_public_base(request)}/sub/{token}"
-  body=render_subscription_page(nonce=nonce,brand=settings.app_name,username=u['username'],state=_page_state(u),used=u['used'],limit=u['limit'],expire=u['expire'],created=u['created'],now=int(time.time()),online_at=u['online_at'],service=u['service_name'],reset=u['reset'],on_hold_days=u['on_hold_days'],links=parsed,sub_url=sub_url,qr_svg=_qr_svg(sub_url))
+  body=render_subscription_page(nonce=nonce,brand="Link Sub",username=u['username'],state=_page_state(u),used=u['used'],limit=u['limit'],expire=u['expire'],created=u['created'],now=int(time.time()),online_at=u['online_at'],service=u['service_name'],reset=u['reset'],on_hold_days=u['on_hold_days'],links=parsed,sub_url=sub_url,qr_svg=_qr_svg(sub_url))
   return HTMLResponse(body,headers={'Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow','Content-Security-Policy':f"default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-{nonce}'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"})
  if not links:
   off=_off_links(u)

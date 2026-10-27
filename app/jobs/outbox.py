@@ -10,7 +10,7 @@ from app.drivers.factory import build_driver
 from app.drivers.base import RemoteOutcomeUnknown
 from app.core.errors import short_error
 import logging
-log=logging.getLogger('parvmarz.outbox')
+log=logging.getLogger('jinxdata.outbox')
 
 async def process_one(task_id:int)->bool:
  with SessionLocal() as db:

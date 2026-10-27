@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ParvMarz one-line installer:
+# Jinx Data one-line installer:
 #   bash <(curl -fsSL https://raw.githubusercontent.com/ParvaneZone/ParvMarz/main/install.sh)
 # Commands: install (default) | update | status | logs | uninstall
 set -euo pipefail
@@ -77,7 +77,7 @@ write_env() {
   fi
   fernet="$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '\n')"
   cat > "$DIR/.env" <<ENV
-APP_NAME=ParvMarz
+APP_NAME=Jinx Data
 ENVIRONMENT=production
 DATABASE_URL=sqlite:///./data/subhub.db
 JWT_SECRET=$(rnd 32)

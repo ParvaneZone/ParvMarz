@@ -23,8 +23,8 @@ def test_totp_window_and_replay():
 
 def test_provisioning_uri_and_secret():
     assert len(totp.new_secret()) == 32
-    uri = totp.provisioning_uri("ABC", "ali", "SubHub")
-    assert uri.startswith("otpauth://totp/SubHub%3Aali?secret=ABC&issuer=SubHub")
+    uri = totp.provisioning_uri("ABC", "ali", "Jinx Data")
+    assert uri.startswith("otpauth://totp/Jinx%20Data%3Aali?secret=ABC&issuer=Jinx%20Data")
 
 
 def test_recovery_codes_single_use():
