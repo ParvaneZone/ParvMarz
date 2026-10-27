@@ -5,7 +5,7 @@ from urllib.parse import quote, urljoin, urlparse
 
 import httpx
 
-from app.drivers.base import DEFAULT_CAPABILITIES, AccessPlan, PanelDriver, RemoteOutcomeUnknown
+from app.drivers.base import DEFAULT_CAPABILITIES, AccessPlan, PanelDriver, RemoteOutcomeUnknown, normalize_inbounds
 
 _USER_KEYS = {
     "data_limit", "expire", "status", "note", "data_limit_reset_strategy", "service_id",
@@ -141,8 +141,21 @@ class RebeccaDriver(PanelDriver):
         return {"ok": True, "admin": await self._request("GET", "/api/admin")}
 
     async def list_inbounds(self) -> list[dict[str, Any]]:
-        data = await self._request_any("GET", ["/api/inbounds/full", "/api/inbounds"])
-        return _items(data, "inbounds")
+        # Try each route and keep the first one that really yields inbounds (shape differs by version).
+        last: Exception | None = None
+        for path in ("/api/inbounds/full", "/api/inbounds"):
+            try:
+                rows = normalize_inbounds(await self._request("GET", path))
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code not in (404, 405, 410, 422):
+                    raise
+                last = exc
+                continue
+            if rows:
+                return rows
+        if last:
+            raise last
+        return []
 
     async def list_hosts(self) -> list[dict[str, Any]]:
         return _items(await self._request("GET", "/api/hosts"), "hosts")

@@ -1,6 +1,8 @@
 import React from "react";
-import { Box, Heading, Text, Table, Thead, Tbody, Tr, Th, Td, Badge, Button, HStack, Input, Select, FormControl, FormLabel, Textarea, Switch, SimpleGrid, Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody, Checkbox } from "@chakra-ui/react";
+import { Box, Heading, Text, Table, Thead, Tbody, Tr, Th, Td, Badge, Button, HStack, Progress, Input, Select, FormControl, FormLabel, Textarea, Switch, SimpleGrid, Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton, ModalBody, Checkbox } from "@chakra-ui/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Icon } from "./Icon";
+import type { IconName } from "./Icon";
 
 export type Ctx = { api: (p: string, i?: RequestInit) => Promise<any>; t: (fa: string, en: string) => string; toast: (o: any) => void };
 const GB = 1024 ** 3;
@@ -23,9 +25,24 @@ export function PanelsTab(c: Ctx) {
   const q = useQuery({ queryKey: ["panels"], queryFn: () => api("/api/panels") });
   const empty = { name: "", type: "marzban", base_url: "", username: "", password: "", verify_ssl: true, enabled: true, username_prefix: "", sync_interval: 60 };
   const [f, setF] = React.useState<any>(null); const [editId, setEditId] = React.useState<number | null>(null);
-  const [inb, setInb] = React.useState<any[] | null>(null);
+  const qc = useQueryClient();
+  const [inb, setInb] = React.useState<{ panel: any; rows: any[]; busy: boolean; error: string } | null>(null);
   const set = (k: string, v: any) => setF({ ...f, [k]: v });
-  const save = () => run(editId ? `/api/panels/${editId}` : "/api/panels", J(editId ? "PUT" : "POST", { ...f, sync_interval: Number(f.sync_interval) }), () => { setF(null); setEditId(null); });
+  /** Pull the panel's real inbounds (never services/groups) and refresh the cache the UI reads from. */
+  const pullInbounds = async (p: any, force: boolean) => {
+    setInb({ panel: p, rows: [], busy: true, error: "" });
+    try {
+      let rows = force ? [] : await api(`/api/panels/${p.id}/inbounds`).catch(() => []);
+      if (!rows.length) { await api(`/api/panels/${p.id}/sync`, J("POST")); rows = await api(`/api/panels/${p.id}/inbounds`); }
+      setInb({ panel: p, rows, busy: false, error: "" });
+    } catch (e) { setInb({ panel: p, rows: [], busy: false, error: msg(e) }); }
+    await Promise.all(["panels", "inbounds"].map(k => qc.invalidateQueries({ queryKey: [k] })));
+  };
+  const save = async () => {
+    const r = await run(editId ? `/api/panels/${editId}` : "/api/panels", J(editId ? "PUT" : "POST", { ...f, sync_interval: Number(f.sync_interval) }), () => { setF(null); setEditId(null); });
+    const id = editId ?? r?.id; // new/edited panel: fetch its inbounds right away so they are ready to pick
+    if (id) { await api(`/api/panels/${id}/sync`, J("POST")).catch(() => {}); await Promise.all(["panels", "inbounds"].map(k => qc.invalidateQueries({ queryKey: [k] }))); }
+  };
   return <Box className="panel">
     <HStack justify="space-between" mb={4}><Heading size="md">{t("پنل‌های بالادستی", "Upstream panels")}</Heading><Button colorScheme="blue" onClick={() => { setEditId(null); setF(empty); }}>{t("افزودن پنل", "Add panel")}</Button></HStack>
     {f && <Box className="create-form" mb={4}><SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
@@ -44,13 +61,17 @@ export function PanelsTab(c: Ctx) {
         <Td><Badge colorScheme={p.status === "healthy" ? "green" : "red"}>{p.status}</Badge>{p.last_error && <Text fontSize="xs">{p.last_error}</Text>}</Td>
         <Td><HStack flexWrap="wrap" spacing={2}>
           <Button size="xs" onClick={() => run(`/api/panels/${p.id}/test`, J("POST"))}>{t("تست", "Test")}</Button>
-          <Button size="xs" onClick={() => run(`/api/panels/${p.id}/sync`, J("POST"))}>{t("همگام‌سازی", "Sync")}</Button>
-          <Button size="xs" onClick={async () => setInb(await api(`/api/panels/${p.id}/inbounds`).catch(() => []))}>Inbounds</Button>
+          <Button size="xs" leftIcon={<Icon name="refresh" size={14} />} onClick={() => run(`/api/panels/${p.id}/sync`, J("POST"))}>{t("همگام‌سازی", "Sync")}</Button>
+          <Button size="xs" leftIcon={<Icon name="inbound" size={14} />} onClick={() => void pullInbounds(p, false)}>{t("اینباندها", "Inbounds")}</Button>
           <Button size="xs" onClick={() => { setEditId(p.id); setF({ ...empty, name: p.name, type: p.type, base_url: p.base_url, enabled: p.enabled }); }}>{t("ویرایش", "Edit")}</Button>
           <Button size="xs" colorScheme="red" onClick={() => confirm(t("حذف شود؟", "Delete?")) && run(`/api/panels/${p.id}`, J("DELETE"))}>{t("حذف", "Delete")}</Button>
         </HStack></Td></Tr>)}</Tbody></Table></Box>
-    <Modal isOpen={!!inb} onClose={() => setInb(null)} size="xl" isCentered><ModalOverlay /><ModalContent><ModalHeader>Inbounds</ModalHeader><ModalCloseButton /><ModalBody pb={6} overflowX="auto">
-      <Table size="sm"><Thead><Tr><Th>remote_id</Th><Th>tag</Th><Th>protocol</Th><Th>network</Th><Th>security</Th></Tr></Thead><Tbody>{(inb || []).map((x: any) => <Tr key={x.id}><Td>{x.remote_id}</Td><Td>{x.tag}</Td><Td>{x.protocol}</Td><Td>{x.network}</Td><Td>{x.security}</Td></Tr>)}</Tbody></Table></ModalBody></ModalContent></Modal>
+    <Modal isOpen={!!inb} onClose={() => setInb(null)} size="xl" isCentered><ModalOverlay /><ModalContent><ModalHeader>{t("اینباندهای پنل", "Panel inbounds")}{inb?.panel ? ` — ${inb.panel.name}` : ""}</ModalHeader><ModalCloseButton /><ModalBody pb={6} overflowX="auto">
+      <HStack mb={3} justify="space-between"><Text fontSize="sm" className="muted">{t("فقط اینباندهای واقعی پنل (نه سرویس یا گروه).", "Real panel inbounds only (not services or groups).")}</Text>
+        <Button size="xs" leftIcon={<Icon name="refresh" size={14} />} isLoading={inb?.busy} onClick={() => inb && void pullInbounds(inb.panel, true)}>{t("دریافت مجدد از پنل", "Fetch from panel")}</Button></HStack>
+      {inb?.error && <Text color="red.400" fontSize="sm" mb={2}>{inb.error}</Text>}
+      {inb && !inb.busy && !inb.error && inb.rows.length === 0 && <Text fontSize="sm" className="muted">{t("اینباندی پیدا نشد.", "No inbounds found.")}</Text>}
+      <Table size="sm"><Thead><Tr><Th>#</Th><Th>tag</Th><Th>protocol</Th><Th>network</Th><Th>security</Th></Tr></Thead><Tbody>{(inb?.rows || []).map((x: any, n: number) => <Tr key={x.id}><Td>{n + 1}</Td><Td className="ltr">{x.tag}</Td><Td>{x.protocol || "—"}</Td><Td>{x.network || "—"}</Td><Td>{x.security || "—"}</Td></Tr>)}</Tbody></Table></ModalBody></ModalContent></Modal>
   </Box>;
 }
 
@@ -59,13 +80,22 @@ function ItemAdder({ c, service, done }: { c: Ctx; service: any; done: () => voi
   const { api, t } = c; const run = useRun(c, ["services"]);
   const panels = useQuery({ queryKey: ["panels"], queryFn: () => api("/api/panels") });
   const [pid, setPid] = React.useState(""); const [inb, setInb] = React.useState<any[]>([]); const [sel, setSel] = React.useState<string[]>([]); const [prio, setPrio] = React.useState("0");
-  React.useEffect(() => { setSel([]); setInb([]); if (pid) void api(`/api/panels/${pid}/inbounds`).then(setInb).catch(() => setInb([])); }, [pid]);
+  const [busy, setBusy] = React.useState(false); const [err, setErr] = React.useState("");
+  React.useEffect(() => { setSel([]); setInb([]); setErr("");
+    if (!pid) return; let dead = false; setBusy(true);
+    (async () => { // read the cache; if the panel was never synced, pull its inbounds once automatically
+      let rows: any[] = await api(`/api/panels/${pid}/inbounds`).catch(() => []);
+      if (!rows.length) { try { await api(`/api/panels/${pid}/sync`, J("POST")); rows = await api(`/api/panels/${pid}/inbounds`); } catch (e) { if (!dead) setErr(msg(e)); } }
+      if (!dead) { setInb(rows); setBusy(false); }
+    })();
+    return () => { dead = true; }; }, [pid]);
   return <Box mt={3} p={3} borderWidth="1px" borderRadius="12px">
     <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
       <F label={t("پنل", "Panel")}><Select placeholder="—" value={pid} onChange={e => setPid(e.target.value)}>{(panels.data || []).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></F>
       <F label={t("اولویت", "Priority")}><Input type="number" value={prio} onChange={e => setPrio(e.target.value)} /></F></SimpleGrid>
-    {pid && <Box mt={2}><Text fontSize="sm" mb={1}>{t("اینباندها (خالی = همه)", "Inbounds (empty = all)")}</Text><HStack flexWrap="wrap" spacing={3}>{inb.filter(x => x.kind !== "group").map(x => { const k = String(x.tag ?? x.remote_id ?? x.id); return <Checkbox key={x.id} isChecked={sel.includes(k)} onChange={e => setSel(e.target.checked ? [...sel, k] : sel.filter(s => s !== k))}>{x.tag || x.remote_id}{x.protocol ? ` · ${x.protocol}` : ""}</Checkbox>; })}
-      {inb.length === 0 && <Text fontSize="sm" className="muted">{t("اینباندی در کش نیست؛ ابتدا در تب پنل‌ها «همگام‌سازی» بزنید.", "No inbounds cached; press Sync in the Panels tab first.")}</Text>}</HStack></Box>}
+    {pid && <Box mt={2}><HStack mb={1} spacing={2}><Text fontSize="sm">{t("اینباندهای پنل (خالی = همه)", "Panel inbounds (empty = all)")}</Text>{busy && <Text fontSize="xs" className="muted">{t("در حال دریافت از پنل…", "Fetching from panel…")}</Text>}
+      {inb.length > 0 && <><Button size="xs" variant="outline" onClick={() => setSel(inb.filter(x => x.kind !== "group").map(x => String(x.tag ?? x.remote_id ?? x.id)))}>{t("همه", "All")}</Button><Button size="xs" variant="outline" onClick={() => setSel([])}>{t("هیچ‌کدام", "None")}</Button></>}</HStack><HStack flexWrap="wrap" spacing={3}>{inb.filter(x => x.kind !== "group").map(x => { const k = String(x.tag ?? x.remote_id ?? x.id); return <Checkbox key={x.id} isChecked={sel.includes(k)} onChange={e => setSel(e.target.checked ? [...sel, k] : sel.filter(s => s !== k))}>{x.tag || x.remote_id}{x.protocol ? ` · ${x.protocol}` : ""}</Checkbox>; })}
+      {!busy && inb.length === 0 && <Text fontSize="sm" className={err ? undefined : "muted"} color={err ? "red.400" : undefined}>{err || t("اینباندی پیدا نشد؛ اتصال پنل را در تب پنل‌ها تست کنید.", "No inbounds found; test the panel connection in the Panels tab.")}</Text>}</HStack></Box>}
     <Button mt={3} size="sm" colorScheme="blue" isDisabled={!pid} onClick={() => run(`/api/services/${service.id}/items`, J("POST", { panel_id: Number(pid), selected_items: sel, priority: Number(prio) }), done)}>{t("افزودن پنل به سرویس", "Attach panel")}</Button>
   </Box>;
 }
@@ -93,7 +123,7 @@ export function ServicesTab(c: Ctx) {
           <Button size="xs" onClick={() => { setEditId(s.id); setF({ ...empty, name: s.name, display_name: s.display_name, description: s.description, enabled: s.enabled, sort_order: s.sort_order, sub_remark_template: s.sub_remark_template || empty.sub_remark_template }); }}>{t("ویرایش", "Edit")}</Button>
           <Button size="xs" colorScheme="red" onClick={() => confirm(t("حذف شود؟", "Delete?")) && run(`/api/services/${s.id}`, J("DELETE"))}>{t("حذف", "Delete")}</Button></HStack>}</HStack>
       {s.inbound_names?.length > 0 && <Text fontSize="sm" mt={2}>{s.inbound_names.join("، ")}</Text>}
-      <Table size="sm" mt={2}><Tbody>{s.items.map((i: any) => <Tr key={i.id}><Td>{pname(i.panel_id)}</Td><Td className="ltr">{(i.selected_items || []).join(", ") || t("همه", "all")}</Td><Td>P{i.priority}</Td><Td><Button size="xs" colorScheme="red" variant="outline" onClick={() => run(`/api/services/${s.id}/items/${i.id}`, J("DELETE"))}>✕</Button></Td></Tr>)}</Tbody></Table>
+      <Table size="sm" mt={2}><Tbody>{s.items.map((i: any) => <Tr key={i.id}><Td>{pname(i.panel_id)}</Td><Td className="ltr">{(i.selected_items || []).join(", ") || t("همه", "all")}</Td><Td>P{i.priority}</Td><Td><Button size="xs" colorScheme="red" variant="outline" aria-label={t("حذف","Remove")} onClick={() => run(`/api/services/${s.id}/items/${i.id}`, J("DELETE"))}><Icon name="x" size={14} /></Button></Td></Tr>)}</Tbody></Table>
       {addFor === s.id && <ItemAdder c={c} service={s} done={() => setAddFor(null)} />}
     </Box>)}
   </Box>;
@@ -283,43 +313,79 @@ export function InboundsTab(c: Ctx) {
 }
 
 /* ---------------- Dashboard ---------------- */
-const fmtB = (n: number | null | undefined) => { if (n == null) return "∞"; const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0, x = n; while (x >= 1024 && i < 4) { x /= 1024; i++; } return x.toFixed(i ? 2 : 0) + " " + u[i]; };
-const fmtUp = (s?: number) => s == null ? "—" : `${Math.floor(s / 86400)}d ${Math.floor(s % 86400 / 3600)}h ${Math.floor(s % 3600 / 60)}m`;
+const fmtB = (n: number | null | undefined) => { if (n == null) return "∞"; const u = ["B", "KB", "MB", "GB", "TB", "PB"]; let i = 0, x = n; while (x >= 1024 && i < 5) { x /= 1024; i++; } return x.toFixed(i ? 2 : 0) + " " + u[i]; };
+const fmtRate = (n: number | null | undefined) => (n == null ? "—" : fmtB(n) + "/s");
+const fmtPct = (n: number | null | undefined) => (n == null ? "—" : n.toFixed(2) + "%");
+const fmtUp = (s?: number) => s == null ? "—" : `${Math.floor(s / 86400)}d ${Math.floor(s % 86400 / 3600)}h ${Math.floor(s % 3600 / 60)}m ${Math.floor(s % 60)}s`;
+const tone = (p: number | null | undefined) => (p == null ? "blue" : p >= 90 ? "red" : p >= 70 ? "orange" : "green");
+
+function Spark({ data, max, color = "var(--accent, #3182ce)" }: { data: number[]; max?: number; color?: string }) {
+  const W = 120, H = 32; if (data.length < 2) return <svg className="spark" width={W} height={H} aria-hidden />;
+  const top = max ?? Math.max(1, ...data);
+  const pts = data.map((v, i) => `${((i / (data.length - 1)) * W).toFixed(1)},${(H - 2 - (Math.min(v, top) / top) * (H - 4)).toFixed(1)}`).join(" ");
+  return <svg className="spark" width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden><polyline points={pts} fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" /></svg>;
+}
+
+function Live({ icon, label, value, sub, pct, hist, histMax }: { icon: IconName; label: string; value: string; sub?: string; pct?: number | null; hist?: number[]; histMax?: number }) {
+  return <Box className="stat live-card" p={4} borderWidth="1px" borderRadius="12px">
+    <HStack justify="space-between" mb={1}><HStack spacing={2} className="muted"><Icon name={icon} size={16} /><Text fontSize="sm">{label}</Text></HStack>{hist && <Spark data={hist} max={histMax} />}</HStack>
+    <Heading size="md" className="ltr live-num">{value}</Heading>
+    {pct != null && <Progress mt={2} value={Math.min(100, pct)} size="xs" borderRadius="full" colorScheme={tone(pct)} />}
+    {sub && <Text fontSize="xs" className="muted ltr" mt={1}>{sub}</Text>}
+  </Box>;
+}
+
+/** Server load, refreshed every 2 s straight from the server (real CPU %, 2 decimals). */
+function LiveSystem({ api, t, initial }: { api: Ctx["api"]; t: Ctx["t"]; initial?: any }) {
+  const q = useQuery({ queryKey: ["live-system"], queryFn: () => api("/api/system/live"), refetchInterval: 2000, refetchIntervalInBackground: false, staleTime: 0, gcTime: 0 });
+  const sys = q.data ?? initial; const [h, setH] = React.useState<{ cpu: number[]; rx: number[]; tx: number[] }>({ cpu: [], rx: [], tx: [] });
+  React.useEffect(() => { const d = q.data; if (!d) return; const push = (a: number[], v: number | null | undefined) => [...a, v ?? 0].slice(-40);
+    setH(o => ({ cpu: push(o.cpu, d.cpu_percent), rx: push(o.rx, d.network?.rx_speed), tx: push(o.tx, d.network?.tx_speed) })); }, [q.dataUpdatedAt]);
+  if (!sys) return null;
+  const net = sys.network; const mem = sys.memory; const sw = sys.swap; const dk = sys.disk;
+  const stamp = q.dataUpdatedAt ? new Date(q.dataUpdatedAt).toLocaleTimeString() : "";
+  return <>
+    <HStack mt={6} mb={3} justify="space-between"><Heading size="sm">{t("وضعیت سیستم (زنده)", "System (live)")}</Heading>
+      <HStack spacing={2} className="muted" fontSize="xs"><span className={`live-dot${q.isError ? " off" : ""}`} /><Text className="ltr">{q.isError ? t("قطع", "offline") : stamp}</Text></HStack></HStack>
+    <SimpleGrid columns={{ base: 1, sm: 2, md: 4 }} spacing={3}>
+      <Live icon="cpu" label="CPU" value={fmtPct(sys.cpu_percent)} pct={sys.cpu_percent} hist={h.cpu} histMax={100} sub={sys.load_avg ? `load ${sys.load_avg.map((x: number) => x.toFixed(2)).join(" ")} · ${sys.cpu_count} cores` : undefined} />
+      <Live icon="memory" label="RAM" value={fmtPct(mem?.percent)} pct={mem?.percent} sub={mem ? `${fmtB(mem.used)} / ${fmtB(mem.total)}` : undefined} />
+      <Live icon="swap" label="Swap" value={fmtPct(sw?.percent)} pct={sw?.total ? sw.percent : 0} sub={sw?.total ? `${fmtB(sw.used)} / ${fmtB(sw.total)}` : t("بدون Swap", "No swap")} />
+      <Live icon="disk" label="Disk" value={fmtPct(dk?.percent)} pct={dk?.percent} sub={dk ? `${fmtB(dk.used)} / ${fmtB(dk.total)}` : undefined} />
+      <Live icon="arrowDown" label={t("دانلود شبکه", "Net download")} value={fmtRate(net?.rx_speed)} hist={h.rx} sub={t("مجموع: ", "Total: ") + fmtB(net?.rx_bytes)} />
+      <Live icon="arrowUp" label={t("آپلود شبکه", "Net upload")} value={fmtRate(net?.tx_speed)} hist={h.tx} sub={t("مجموع: ", "Total: ") + fmtB(net?.tx_bytes)} />
+      <Live icon="clock" label="Uptime" value={fmtUp(sys.uptime_seconds)} />
+    </SimpleGrid></>;
+}
+
 export function DashboardTab({ api, t }: Ctx) {
   const q = useQuery({ queryKey: ["dashboard"], queryFn: () => api("/api/system/dashboard"), refetchInterval: 10000 });
   const d = q.data; if (!d) return <Box className="panel"><Text>{t("در حال بارگذاری…", "Loading…")}</Text></Box>;
-  const sys = d.system; const pct = (x: any) => x?.percent != null ? `${x.percent}%` : "—";
-  const card = (label: string, value: any, sub?: string) => <Box key={label} className="stat" p={4} borderWidth="1px" borderRadius="12px"><Text fontSize="sm" className="muted">{label}</Text><Heading size="md" className="ltr">{value}</Heading>{sub && <Text fontSize="xs" className="muted ltr">{sub}</Text>}</Box>;
+  const card = (label: string, value: any, sub?: string, icon?: IconName) => <Box key={label} className="stat" p={4} borderWidth="1px" borderRadius="12px"><HStack spacing={2} className="muted">{icon && <Icon name={icon} size={16} />}<Text fontSize="sm">{label}</Text></HStack><Heading size="md" className="ltr">{value}</Heading>{sub && <Text fontSize="xs" className="muted ltr">{sub}</Text>}</Box>;
+  const usedPct = d.traffic_total ? (d.traffic_used / d.traffic_total) * 100 : null;
   return <Box className="panel">
     <Heading size="md" mb={3}>{d.scope === "all" ? t("داشبورد (کل سیستم)", "Dashboard (all)") : t("داشبورد من", "My dashboard")}</Heading>
     <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3}>
-      {card(t("حجم کل", "Total traffic"), fmtB(d.traffic_total))}
-      {card(t("حجم مصرف‌شده", "Used"), fmtB(d.traffic_used))}
-      {card(t("حجم باقی‌مانده", "Remaining"), fmtB(d.traffic_remaining))}
-      {card(t("حجم ساخته‌شده", "Allocated"), fmtB(d.traffic_created), d.unlimited_users ? `${d.unlimited_users} ${t("نامحدود", "unlimited")}` : undefined)}
-      {card(t("کل کاربران", "Total users"), d.total_users, d.max_users != null ? `/ ${d.max_users}` : undefined)}
-      {card(t("کاربران فعال", "Active"), d.active_users)}
-      {card(t("کاربران آنلاین", "Online"), d.online_users)}
-      {card(t("کاربران خاموش", "Disabled"), d.disabled_users)}
-      {card(t("کاربران منقضی", "Expired"), d.expired_users)}
-      {card(t("حجم تمام‌شده", "Limited"), d.limited_users)}
-      {card(t("در انتظار", "On hold"), d.on_hold_users)}
-      {card(t("انقضا تا ۳ روز", "Expiring ≤3d"), d.expiring_soon)}
+      {card(t("حجم کل", "Total traffic"), fmtB(d.traffic_total), d.unlimited_users ? `+ ${d.unlimited_users} ${t("کاربر نامحدود", "unlimited users")}` : undefined, "database")}
+      {card(t("حجم مصرف‌شده", "Used"), fmtB(d.traffic_used), usedPct != null ? fmtPct(usedPct) : undefined, "activity")}
+      {card(t("حجم باقی‌مانده", "Remaining"), fmtB(d.traffic_remaining), undefined, "gauge")}
+      {card(t("حجم ساخته‌شده", "Allocated"), fmtB(d.traffic_created), undefined, "layers")}
+      {card(t("کل کاربران", "Total users"), d.total_users, d.max_users != null ? `/ ${d.max_users}` : undefined, "users")}
+      {card(t("کاربران فعال", "Active"), d.active_users, undefined, "check")}
+      {card(t("کاربران آنلاین", "Online"), d.online_users, undefined, "wifi")}
+      {card(t("کاربران خاموش", "Disabled"), d.disabled_users, undefined, "x")}
+      {card(t("کاربران منقضی", "Expired"), d.expired_users, undefined, "clock")}
+      {card(t("حجم تمام‌شده", "Limited"), d.limited_users, undefined, "alert")}
+      {card(t("در انتظار", "On hold"), d.on_hold_users, undefined, "refresh")}
+      {card(t("انقضا تا ۳ روز", "Expiring in 3d"), d.expiring_soon, undefined, "bolt")}
     </SimpleGrid>
-    {sys && <>
-      <Heading size="sm" mt={6} mb={3}>{t("وضعیت سیستم", "System")}</Heading>
-      <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3}>
-        {card("CPU", sys.cpu_percent != null ? `${sys.cpu_percent}%` : "—", sys.load_avg ? `load ${sys.load_avg.map((x: number) => x.toFixed(2)).join(" ")} · ${sys.cpu_count} cores` : undefined)}
-        {card("RAM", pct(sys.memory), sys.memory ? `${fmtB(sys.memory.used)} / ${fmtB(sys.memory.total)}` : undefined)}
-        {card("Swap", pct(sys.swap), sys.swap?.total ? `${fmtB(sys.swap.used)} / ${fmtB(sys.swap.total)}` : undefined)}
-        {card("Disk", pct(sys.disk), sys.disk ? `${fmtB(sys.disk.used)} / ${fmtB(sys.disk.total)}` : undefined)}
-        {card("Uptime", fmtUp(sys.uptime_seconds))}
-        {card(t("شبکه ↓", "Net ↓"), fmtB(sys.network?.rx_bytes))}
-        {card(t("شبکه ↑", "Net ↑"), fmtB(sys.network?.tx_bytes))}
-        {card(t("پنل‌های سالم", "Healthy panels"), `${d.panels.healthy}/${d.panels.total}`)}
-        {card(t("ادمین‌ها", "Admins"), d.admins_total)}
-        {card(t("تسک در انتظار", "Pending sync"), d.pending_sync_tasks)}
-        {card(t("تسک ناموفق", "Failed sync"), d.failed_sync_tasks)}
+    {d.system && <>
+      <LiveSystem api={api} t={t} initial={d.system} />
+      <SimpleGrid columns={{ base: 2, md: 4 }} spacing={3} mt={4}>
+        {card(t("پنل‌های سالم", "Healthy panels"), `${d.panels.healthy}/${d.panels.total}`, undefined, "server")}
+        {card(t("ادمین‌ها", "Admins"), d.admins_total, undefined, "shield")}
+        {card(t("تسک در انتظار", "Pending sync"), d.pending_sync_tasks, undefined, "list")}
+        {card(t("تسک ناموفق", "Failed sync"), d.failed_sync_tasks, undefined, "alert")}
       </SimpleGrid></>}
   </Box>;
 }

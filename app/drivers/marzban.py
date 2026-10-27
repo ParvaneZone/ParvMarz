@@ -4,7 +4,7 @@ from urllib.parse import quote
 
 import httpx
 
-from app.drivers.base import DEFAULT_CAPABILITIES, AccessPlan, PanelDriver
+from app.drivers.base import DEFAULT_CAPABILITIES, AccessPlan, PanelDriver, normalize_inbounds
 
 _USER_KEYS = {
     "username", "proxies", "inbounds", "data_limit", "expire", "data_limit_reset_strategy",
@@ -93,16 +93,7 @@ class MarzbanDriver(PanelDriver):
         return await self._request("GET", "/api/system")
 
     async def list_inbounds(self) -> list[dict[str, Any]]:
-        data = await self._request("GET", "/api/inbounds")
-        result: list[dict[str, Any]] = []
-        if isinstance(data, dict):
-            for protocol, items in data.items():
-                if isinstance(items, list):
-                    result.extend({**item, "protocol": item.get("protocol") or protocol}
-                                  for item in items if isinstance(item, dict))
-        elif isinstance(data, list):
-            result = [item for item in data if isinstance(item, dict)]
-        return result
+        return normalize_inbounds(await self._request("GET", "/api/inbounds"))
 
     async def list_groups(self) -> list[dict[str, Any]]:
         # Marzban access is selected with protocol -> inbound-tag mappings, not groups.

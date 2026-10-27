@@ -47,6 +47,17 @@ def _validate_panel_url(url: str) -> None:
         if any(not a.is_global for a in addrs):
             raise HTTPException(422, detail={"detail": "آدرس داخلی مجاز نیست", "code": "PRIVATE_PANEL_URL"})
 
+def _why(exc: Exception) -> str:
+    """Short, secret-free reason for the UI (never the raw exception text of a remote reply)."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code} {exc.request.url.path}"
+    if isinstance(exc, (httpx.TimeoutException, httpx.NetworkError)):
+        return f"{type(exc).__name__}: cannot reach panel"
+    if isinstance(exc, (RuntimeError, ValueError)):
+        return str(exc)[:160]
+    return type(exc).__name__
+
+
 def _credentials(panel: Panel) -> dict:
     raw = decrypt_secret(panel.credentials_enc)
     username, _, password = raw.partition("\n")
@@ -98,9 +109,9 @@ async def test_panel(panel_id: int, _: Admin = Depends(require_sudo), db: Sessio
         db.commit()
         return result
     except Exception as exc:
-        panel.status, panel.last_error = "down", type(exc).__name__
+        panel.status, panel.last_error = "down", _why(exc)
         db.commit()
-        raise HTTPException(502, detail={"detail": "اتصال به پنل ناموفق بود", "code": "PANEL_CONNECTION_FAILED"}) from exc
+        raise HTTPException(502, detail={"detail": f"اتصال به پنل ناموفق بود ({_why(exc)})", "code": "PANEL_CONNECTION_FAILED"}) from exc
 
 
 @router.delete("/{panel_id}")
@@ -144,7 +155,7 @@ async def sync_panel(panel_id: int, _: Admin = Depends(require_sudo), db: Sessio
         except NotImplementedError:
             inbounds = []
         if not inbounds:
-            raise RuntimeError('Panel exposed no readable inbounds')
+            raise RuntimeError('Panel returned no inbounds (check the panel account can read inbounds)')
         groups = []
         if panel.type in ('rebecca', 'pasarguard'):
             try:
@@ -155,9 +166,11 @@ async def sync_panel(panel_id: int, _: Admin = Depends(require_sudo), db: Sessio
         now = datetime.now(timezone.utc)
         for item in inbounds:
             tag = item.get('tag') or item.get('remark') or item.get('name')
+            if not tag:
+                continue
             db.add(PanelInbound(panel_id=panel.id, kind='inbound',
                 remote_id=str(item.get('id')) if item.get('id') is not None else None,
-                tag=tag, protocol=item.get('protocol'), network=item.get('network'), security=item.get('security'),
+                tag=tag, protocol=item.get('protocol') if isinstance(item.get('protocol'), str) else None, network=item.get('network') if isinstance(item.get('network'), str) else None, security=item.get('security') if isinstance(item.get('security'), str) else None,
                 remark=item.get('remark') or tag, cached_at=now))
         for item in groups:
             name = item.get('name') or item.get('display_name') or item.get('remark')
@@ -165,10 +178,11 @@ async def sync_panel(panel_id: int, _: Admin = Depends(require_sudo), db: Sessio
                 remote_id=str(item.get('id')) if item.get('id') is not None else None,
                 tag=name, remark=name, cached_at=now, extra={'inbound_tags': tags_from_group(item)}))
         panel.status='healthy'; panel.last_error=None; panel.last_ok_at=now; db.commit()
-        return {'synced': len(inbounds), 'inbounds': inbounds}
+        rows = [{'tag': i.get('tag') or i.get('remark') or i.get('name'), 'protocol': i.get('protocol'), 'network': i.get('network'), 'security': i.get('security')} for i in inbounds]
+        return {'synced': len(rows), 'groups_cached': len(groups), 'inbounds': rows}
     except Exception as exc:
-        panel.status='down'; panel.last_error=type(exc).__name__; db.commit()
-        raise HTTPException(502, detail={'detail': 'همگام‌سازی پنل ناموفق بود', 'code': 'PANEL_SYNC_FAILED'}) from exc
+        panel.status='down'; panel.last_error=_why(exc); db.commit()
+        raise HTTPException(502, detail={'detail': f'همگام‌سازی پنل ناموفق بود ({_why(exc)})', 'code': 'PANEL_SYNC_FAILED'}) from exc
 
 @router.get('/{panel_id}/inbounds')
 def get_inbounds(panel_id: int, _: Admin = Depends(require_sudo), db: Session = Depends(get_db)):

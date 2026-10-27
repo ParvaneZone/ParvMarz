@@ -65,6 +65,60 @@ DEFAULT_CAPABILITIES: dict[str, bool] = {
 }
 
 
+_LIST_KEYS = ("inbounds", "items", "data", "results")
+
+
+def normalize_inbounds(data: Any, default_protocol: str | None = None) -> list[dict[str, Any]]:
+    """Turn whatever a panel returns for "list inbounds" into [{tag, protocol, network, security, ...}].
+
+    Panels disagree on the shape: Marzban returns {protocol: [inbound, ...]}, Marzneshin/Rebecca a
+    list or {items: [...]} of objects, PasarGuard a plain list of tag *strings*. Only real inbounds
+    come out of here - never services or groups.
+    """
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def add(item: Any, protocol: str | None) -> None:
+        if isinstance(item, (str, int)) and not isinstance(item, bool):
+            item = {"tag": str(item)}
+        if not isinstance(item, dict):
+            return
+        tag = item.get("tag") or item.get("name") or item.get("remark")
+        if tag is None and item.get("id") is None:
+            return
+        row = dict(item)
+        if tag is not None:
+            row["tag"] = str(tag)
+        row["protocol"] = item.get("protocol") or protocol
+        security = item.get("security")
+        if security is None and "tls" in item:
+            tls = item.get("tls")
+            security = tls if isinstance(tls, str) and tls else ("tls" if tls else "none")
+        if security is not None:
+            row["security"] = security
+        key = row.get("tag") or f"id:{row.get('id')}"
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(row)
+
+    def walk(node: Any, protocol: str | None) -> None:
+        if isinstance(node, list):
+            for item in node:
+                add(item, protocol)
+        elif isinstance(node, dict):
+            for key in _LIST_KEYS:
+                if isinstance(node.get(key), (list, dict)):
+                    walk(node[key], protocol)
+                    return
+            for proto, items in node.items():  # Marzban: {"vless": [...], "vmess": [...]}
+                if isinstance(items, list):
+                    walk(items, str(proto))
+
+    walk(data, default_protocol)
+    return out
+
+
 class RemoteOutcomeUnknown(RuntimeError):
     """A mutating upstream request may have succeeded despite a lost response."""
 

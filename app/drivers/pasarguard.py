@@ -6,7 +6,7 @@ from urllib.parse import quote, urlparse
 
 import httpx
 
-from app.drivers.base import DEFAULT_CAPABILITIES, AccessPlan, PanelDriver
+from app.drivers.base import DEFAULT_CAPABILITIES, AccessPlan, PanelDriver, normalize_inbounds
 
 _USER_KEYS = {
     "data_limit", "expire", "note", "status", "data_limit_reset_strategy", "on_hold_timeout",
@@ -145,12 +145,20 @@ class PasarGuardDriver(PanelDriver):
         return {"ok": True, "admin": await self._request("GET", "/api/admin")}
 
     async def list_inbounds(self) -> list[dict[str, Any]]:
-        data = await self._request("GET", "/api/inbounds")
-        if isinstance(data, dict):
-            for key in ("inbounds", "items", "data"):
-                if isinstance(data.get(key), list):
-                    return [x for x in data[key] if isinstance(x, dict)]
-        return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
+        # PasarGuard answers with a plain list of inbound tags (strings); older builds return objects.
+        rows = normalize_inbounds(await self._request("GET", "/api/inbounds"))
+        if rows and any(not r.get("security") for r in rows):
+            try:  # best effort: hosts carry the TLS/security setting per inbound tag
+                hosts = await self._request("GET", "/api/hosts")
+                hosts = hosts.get("hosts", []) if isinstance(hosts, dict) else hosts
+                sec = {h.get("inbound_tag"): h.get("security") for h in (hosts or [])
+                       if isinstance(h, dict) and h.get("inbound_tag") and h.get("security")}
+                for r in rows:
+                    if not r.get("security") and sec.get(r["tag"]):
+                        r["security"] = sec[r["tag"]]
+            except Exception:
+                pass
+        return rows
 
     async def list_groups(self) -> list[dict[str, Any]]:
         data = None

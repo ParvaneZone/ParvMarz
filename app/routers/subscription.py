@@ -55,7 +55,7 @@ def _load_user(token:str):
   user=db.query(User).filter(func.lower(User.username)==claims['u'].lower()).first()
   if not user or user.sub_token_version!=claims['v']: raise HTTPException(404,'Subscription not found')
   return {'id':user.id,'username':user.username,'version':user.sub_token_version,'status':user.status,'used':user.used_traffic,'limit':user.data_limit,'expire':int(user.expire.timestamp()) if user.expire else 0,'created':int(user.created_at.timestamp()),'service_id':user.service_id,'admin_id':user.admin_id}
-_OFF_DEFAULT={'expired':'⛔ زمان اشتراک شما تمام شده','limited':'⛔ حجم اشتراک شما تمام شده','disabled':'⛔ اشتراک شما غیرفعال است'}
+_OFF_DEFAULT={'expired':'زمان اشتراک شما تمام شده','limited':'حجم اشتراک شما تمام شده','disabled':'اشتراک شما غیرفعال است'}
 def _off_links(u)->list[str]:
  """اینباند خاموش: فقط برای کاربران ادمینی که مدیر اصلی دسترسی sub.off_inbound را برایش فعال کرده."""
  from app.core.permissions import has_perm
