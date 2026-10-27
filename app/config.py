@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     initial_admin_username: str = ""
     initial_admin_password: str = ""
+    login_rate_limit_enabled: bool = True
+    login_max_attempts: int = 5
+    login_lock_seconds: int = 900
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

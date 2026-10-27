@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from app.config import settings
 from app.db.session import Base, engine, SessionLocal
@@ -54,7 +55,17 @@ async def security_headers(request, call_next):
 def root():
     return {"service": settings.app_name, "dashboard": "/dashboard/"}
 
-@app.get("/dashboard/", include_in_schema=False)
+_dist = Path(__file__).parent / "dashboard" / "dist"
+if (_dist / "assets").is_dir():
+    app.mount("/dashboard/assets", StaticFiles(directory=_dist / "assets"), name="dashboard-assets")
+
+
+@app.get("/health", include_in_schema=False)
+def health_simple():
+    return {"status": "ok"}
+
+
+@app.api_route("/dashboard/", methods=["GET", "HEAD"], include_in_schema=False)
 def dashboard():
     index = Path(__file__).parent / "dashboard" / "dist" / "index.html"
     if index.exists():

@@ -73,16 +73,20 @@ ENV
   say "Admin: $ADMIN_USER / $ADMIN_PASS   (save it; also in $DIR/.env)"
 }
 
+link_menu() { chmod +x "$DIR/parvmarz.sh" "$DIR/docker-entrypoint.sh" 2>/dev/null; ln -sf "$DIR/parvmarz.sh" /usr/local/bin/parvmarz; }
+
 case "$CMD" in
   install)
-    ensure_deps; fetch_code; write_env
+    ensure_deps; fetch_code; link_menu; write_env
     say "Building and starting (first build takes a few minutes)"
     dc up -d --build
     . "$DIR/.env"
     say "Done. Dashboard: ${PUBLIC_BASE_URL}/dashboard/"
+    echo "Menu: run  parvmarz"
     echo "Put HTTPS in front (deploy/Caddyfile.example) and remove INITIAL_ADMIN_PASSWORD from .env after first login."
     ;;
-  update) ensure_deps; fetch_code; dc up -d --build; say "Updated." ;;
+  menu) exec "$DIR/parvmarz.sh" ;;
+  update) ensure_deps; fetch_code; link_menu; dc up -d --build; say "Updated." ;;
   status) dc ps ;;
   logs) dc logs -f --tail=100 ;;
   uninstall)

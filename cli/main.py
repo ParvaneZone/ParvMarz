@@ -36,3 +36,25 @@ def reconcile_users():
     """Queue reconciliation tasks for unsynced user accounts."""
     from app.jobs.reconcile import reconcile
     typer.echo(reconcile())
+
+
+@app.command()
+def reset_admin_password(username: str = typer.Option("", help="Admin username (default: first sudo admin)"),
+                         password: str = typer.Option(..., prompt=True, hide_input=True, confirmation_prompt=True)):
+    """Reset an administrator's password (re-enables the account, revokes old tokens)."""
+    from datetime import datetime, timezone
+    from sqlalchemy import func
+    if len(password) < 12:
+        raise typer.BadParameter("Password must be at least 12 characters")
+    with SessionLocal() as db:
+        q = db.query(Admin)
+        admin = (q.filter(func.lower(Admin.username) == username.lower()).first() if username
+                 else q.filter(Admin.role == "sudo").order_by(Admin.id).first())
+        if not admin:
+            raise typer.BadParameter("Admin not found")
+        admin.password_hash = hash_password(password)
+        admin.disabled = False
+        admin.password_reset_at = datetime.now(timezone.utc)
+        db.commit()
+        typer.echo(f"Password reset for '{admin.username}'. Restart the container to clear login locks.")
+

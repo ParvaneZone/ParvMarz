@@ -10,24 +10,44 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ParvaneZone/ParvMarz/main/in
 
 اسکریپت در صورت نیاز Docker را نصب می‌کند، نام‌کاربری/رمز مدیر و پورت را می‌پرسد (یا خودش می‌سازد)، رازهای تصادفی قوی تولید می‌کند و پنل را بالا می‌آورد. سپس `http://IP:8000/dashboard/` را باز کنید. به‌روزرسانی: همان دستور با `update` در انتها. مسیر نصب: `/opt/parvmarz`.
 
-## اجرا با Docker
-
-1. فایل نمونه را کپی کنید و مقادیر محرمانه را تولید کنید:
+## اجرا با Docker (فقط Docker لازم است)
 
 ```bash
-cp .env.example .env
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
-
-کلید خروجی را در `CREDENTIALS_ENCRYPTION_KEY` قرار دهید. برای `JWT_SECRET` و `SUBSCRIPTION_HMAC_KEY` دو راز مستقل و تصادفی با حداقل ۳۲ کاراکتر تنظیم کنید. نام کاربری و رمز مدیر اولیه را نیز در `.env` تعیین کنید یا پس از اجرا از CLI مدیر بسازید.
-
-```bash
+cp .env.example .env      # اختیاری؛ بدون آن هم بالا می‌آید
 docker compose up -d --build
 ```
 
-- داشبورد: `/dashboard/`
-- مستندات API: `/docs`
-- سلامت: `/api/health`
+- کلیدهای `JWT_SECRET`، `SUBSCRIPTION_HMAC_KEY` و `CREDENTIALS_ENCRYPTION_KEY` اگر خالی/placeholder باشند در اولین اجرا خودکار ساخته و در volume داده (`/app/data/secrets.json`) ذخیره می‌شوند؛ نیازی به `python`/`openssl`/`parvmarz` روی میزبان نیست.
+- اگر `INITIAL_ADMIN_USERNAME` خالی باشد `admin` و اگر `INITIAL_ADMIN_PASSWORD` خالی باشد رمز تصادفی ساخته می‌شود. رمز در لاگ چاپ **نمی‌شود**؛ با این دستور بخوانید:
+
+```bash
+docker compose exec subhub cat /app/data/initial-admin.txt
+```
+
+- **پورت**: اگر ۸۰۰۰ روی سرور اشغال است، در `.env` مقدار `PORT=8080` (یا هر پورت آزاد) بگذارید؛ داشبورد روی `http://IP:PORT/dashboard/` است.
+- `PUBLIC_BASE_URL` خالی = `http://localhost:PORT`. برای لینک اشتراک درست، آن را روی آدرس واقعی (`http://IP:PORT` یا `https://دامنه`) بگذارید و `docker compose up -d` را دوباره بزنید.
+- شبکهٔ کند/ایران: در `.env` مقدار `NPM_REGISTRY=https://registry.npmmirror.com` (و در صورت نیاز `PIP_INDEX_URL`) را بگذارید. تایم‌اوت و retry پیش‌فرض بالاست.
+- سلامت: `/health` و `/api/health`؛ داشبورد: `/dashboard/`؛ مستندات: `/docs`.
+
+### رمز مدیر
+
+مدیر اولیه فقط وقتی ساخته می‌شود که وجود نداشته باشد؛ تغییر `INITIAL_ADMIN_PASSWORD` در `.env` بعد از ساخته شدن اثری ندارد. برای ریست رمز:
+
+```bash
+docker compose exec subhub python -m cli reset-admin-password --username admin
+```
+
+### قفل ورود
+
+۵ تلاش ناموفق برای هر ترکیب IP+نام‌کاربری = ۱۵ دقیقه قفل (شمارنده در حافظه است). برای پاک کردن: `docker compose restart subhub`. فقط برای تست: `LOGIN_RATE_LIMIT_ENABLED=false`.
+
+### HTTP یا HTTPS
+
+احراز هویت با توکن Bearer است (کوکی استفاده نمی‌شود)، پس روی HTTP ساده هم کار می‌کند. اما در اینترنت عمومی رمز و توکن بدون رمزگذاری می‌رود؛ برای استفادهٔ واقعی پشت HTTPS (`deploy/Caddyfile.example` یا `deploy/nginx.conf.example`) بروید.
+
+## منوی ترمینال
+
+دستور `parvmarz` (توسط install.sh نصب می‌شود؛ یا داخل پوشهٔ پروژه `bash parvmarz.sh`) منویی دارد برای: وضعیت، لاگ، استارت/استاپ/ری‌استارت، آپدیت، ویرایش `.env`، تغییر پورت/آدرس، ریست رمز مدیر، نمایش رمز اولیه، پاک کردن قفل ورود، بکاپ، بیلد مجدد و حذف.
 
 ## اجرای توسعه
 
