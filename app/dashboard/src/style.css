@@ -1,0 +1,50 @@
+:root{
+  --bg:#f3f5f9;--card:#ffffff;--soft:#f1f5f9;--border:#d5dde8;--input-border:#8fa0b5;
+  --fg:#111c2e;--muted:#475569;
+}
+body[data-theme="dark"]{
+  --bg:#0f172a;--card:#1e293b;--soft:#0f172a;--border:#3b4a61;--input-border:#64748b;
+  --fg:#f1f5f9;--muted:#b4c0d3;
+}
+body[data-theme="oled"]{
+  --bg:#000;--card:#0b0b0c;--soft:#000;--border:#2e2e33;--input-border:#6b7280;
+  --fg:#f5f5f5;--muted:#b0b0b8;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg)}
+body{font-family:Vazirmatn,Tahoma,"Segoe UI",system-ui,sans-serif;font-size:15px;line-height:1.7;-webkit-text-size-adjust:100%}
+
+.shell{min-height:100vh;max-width:1600px;margin:0 auto;padding:28px;background:var(--bg);color:var(--fg)}
+.muted{color:var(--muted)}
+.ltr{direction:ltr;text-align:left;word-break:break-all}
+
+.stat,.panel,.login{background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:16px;padding:18px}
+.panel{padding:22px;overflow-x:auto}
+.login{max-width:430px;margin:10vh auto;padding:30px}
+.create-form{padding:18px;background:var(--soft);border:1px solid var(--border);border-radius:14px;margin-bottom:20px}
+.tabs{border-bottom:1px solid var(--border);padding-bottom:14px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.tabs::-webkit-scrollbar{display:none}
+
+.stat .chakra-stat__label{color:var(--muted);font-size:14px}
+.stat .chakra-stat__number{color:var(--fg);font-size:28px;font-weight:700}
+
+.shell input:not([type=checkbox]),.shell select,.shell textarea{border-color:var(--input-border);color:var(--fg)}
+.shell ::placeholder{color:var(--muted);opacity:.85}
+.shell select option{background:var(--card);color:var(--fg)}
+
+/* Chakra upper-cases and letter-spaces table headings; that breaks Persian letter joining. */
+.panel table th{text-transform:none;letter-spacing:normal;font-size:13px;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border)}
+.panel table td{border-bottom:1px solid var(--border);color:var(--fg);vertical-align:middle}
+.panel table tr:last-child td{border-bottom:0}
+
+.hdr button,.tabs button{min-height:44px}
+.shell button:focus-visible,.shell input:focus-visible,.shell select:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
+
+@media(max-width:600px){
+  .shell{padding:14px}
+  .panel{padding:14px}
+  .stat{padding:14px}
+  .login{margin:5vh auto;padding:20px}
+  table{min-width:640px}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
