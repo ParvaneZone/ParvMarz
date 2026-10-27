@@ -32,7 +32,7 @@ def list_users(q:str|None=None,status:str|None=None,admin_id:int|None=None,limit
  show=has_perm(admin,'users.view_sub')
  return {'total':total,'items':[serialize_user(u,show) for u in rows]}
 def serialize_user(u,show_sub=True):
- token=issue_subscription_token(u.username,int(u.created_at.timestamp()),u.sub_token_version)
+ token=issue_subscription_token(u.username,int(u.created_at.timestamp()),u.sub_token_version,user_id=u.id)
  return {'id':u.id,'username':u.username,'admin_id':u.admin_id,'service_id':u.service_id,'status':u.status,'data_limit':u.data_limit,'used_traffic':u.used_traffic,'expire':u.expire,'note':u.note,'created_at':u.created_at,'subscription_url':f'/sub/{token}' if show_sub else None}
 @router.post('/user')
 def create_user(body:UserIn,admin:Admin=Depends(require_perm('users.create')),db:Session=Depends(get_db)):
