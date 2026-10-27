@@ -6,9 +6,13 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy import func
 from app.core.subtokens import verify_subscription_token
 from app.core.crypto import decrypt_secret
-from app.db.models import User, UserPanelAccount, Panel, Service, ServiceItem, Setting, InboundAlias, PanelInbound, Admin
+from app.db.models import SyncTask, User, UserPanelAccount, Panel, Service, ServiceItem, Setting, InboundAlias, PanelInbound, Admin
 from app.db.session import SessionLocal
 from app.drivers.factory import build_driver
+from app.core.errors import short_error
+import logging
+log=logging.getLogger('parvmarz.sub')
+_fetch_err:dict[int,str]={}
 from app.subscription.merge import deduplicate_links, apply_aliases, to_clash, to_singbox, to_v2ray_json
 router=APIRouter(tags=['subscription'])
 _cache:dict[str,tuple[float,list[str]]]={}
@@ -35,7 +39,9 @@ async def _remote_links(user_id:int, token_version:int)->list[str]:
    got=await asyncio.wait_for(driver.get_sub_links(remote),timeout=8)
    if pid in amap: got=apply_aliases(got,amap[pid][1],amap[pid][0])
    return True, got
-  except Exception:return False, []
+  except Exception as exc:
+   _fetch_err[user_id]=short_error(exc); log.warning('sub links fetch failed (user %s, panel %s): %s',user_id,pid,_fetch_err[user_id]); return False, []
+ _fetch_err.pop(user_id,None)
  results=await asyncio.gather(*(one(r) for r in snapshot))
  if any(not ok for ok,_ in results):
   if persisted and isinstance(persisted.get('links'),list): return persisted['links']
@@ -69,6 +75,17 @@ def _off_links(u)->list[str]:
   if not admin or not has_perm(admin,'sub.off_inbound'): return []
   st=db.get(Setting,f'off_name_{reason}'); name=(st.value.get('value') if st and isinstance(st.value,dict) else '') or _OFF_DEFAULT[reason]
  return [f'vless://00000000-0000-0000-0000-000000000000@127.0.0.1:{i+1}?security=none&type=tcp#'+quote(n.strip()) for i,n in enumerate(str(name).split('|')) if n.strip()]
+def _why_empty(u)->str:
+ """Tell the admin why an ACTIVE user got no configs (shown as the placeholder's name)."""
+ with SessionLocal() as db:
+  accs=db.query(UserPanelAccount).filter_by(user_id=u['id']).all()
+  if not accs: return 'این سرویس پنلی ندارد'
+  if any(a.sync_state!='synced' for a in accs):
+   failed=db.query(SyncTask).filter(SyncTask.user_id==u['id'],SyncTask.state=='failed').first()
+   if failed: return 'ساخت کاربر روی پنل ناموفق بود'
+   return 'کاربر در حال ساخت روی پنل است؛ چند لحظه بعد دوباره امتحان کنید'
+ if u['id'] in _fetch_err: return 'اتصال به پنل ناموفق بود'
+ return 'پنل برای این کاربر کانفیگی برنگرداند'
 @router.get('/sub/{token}/info')
 def sub_info(token:str):
  u=_load_user(token); return {'username':u['username'],'status':u['status']}
@@ -85,7 +102,9 @@ async def subscription(token:str,request:Request,client_type:str='v2ray'):
  if not links:
   off=_off_links(u)
   if off: parsed=deduplicate_links(off)
- if not parsed: body='vless://invalid@127.0.0.1:443#%E2%9B%94%20%D8%B3%D8%B1%D9%88%DB%8C%D8%B3%20%D9%81%D8%B9%D8%A7%D9%84%20%D9%86%DB%8C%D8%B3%D8%AA'
+ if not parsed:
+  name='سرویس فعال نیست' if u['status']!='active' or (u['expire'] and u['expire']<=int(time.time())) or (u['limit'] is not None and u['used']>=u['limit']) else _why_empty(u)
+  body='vless://invalid@127.0.0.1:443#'+quote(name)
  elif client_type in {'clash','clash-meta'}:
   try: body=to_clash(parsed)
   except ImportError: body=json.dumps({'proxies':parsed},ensure_ascii=False)

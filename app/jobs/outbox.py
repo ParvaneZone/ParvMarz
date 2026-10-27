@@ -8,6 +8,9 @@ from app.core.panel_access import get_panel_credentials
 from app.db.session import SessionLocal
 from app.drivers.factory import build_driver
 from app.drivers.base import RemoteOutcomeUnknown
+from app.core.errors import short_error
+import logging
+log=logging.getLogger('parvmarz.outbox')
 
 async def process_one(task_id:int)->bool:
  with SessionLocal() as db:
@@ -51,7 +54,8 @@ async def process_one(task_id:int)->bool:
    return False
   except Exception as exc:
    task.attempts += 1
-   task.last_error = type(exc).__name__
+   task.last_error = short_error(exc)
+   log.warning('sync task %s (%s, panel %s) failed: %s',task.id,task.action,task.panel_id,task.last_error)
    if task.attempts >= 8:
     task.state = 'failed'
    else:

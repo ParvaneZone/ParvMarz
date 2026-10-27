@@ -1,6 +1,7 @@
 import asyncio
+import base64
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import httpx
 
@@ -198,9 +199,24 @@ class MarzbanDriver(PanelDriver):
         if not user:
             return []
         links = user.get("links", [])
-        if isinstance(links, list):
+        if isinstance(links, list) and any(isinstance(x, str) for x in links):
             return [link for link in links if isinstance(link, str)]
-        return []
+        # Some Marzban forks leave `links` empty; the panel's own subscription URL still has them.
+        subscription = str(user.get("subscription_url") or "")
+        url = self.base_url + subscription if subscription.startswith("/") else subscription
+        bp, tp = urlparse(self.base_url), urlparse(url)
+        if not url or tp.scheme not in {"http", "https"} or tp.netloc != bp.netloc:
+            return []
+        async with httpx.AsyncClient(verify=self.verify_ssl, timeout=8, follow_redirects=False) as client:
+            response = await client.get(url, headers={"User-Agent": "v2rayN"})
+            response.raise_for_status()
+            text = response.text.strip()
+        if "://" not in text:
+            try:
+                text = base64.b64decode(text + "=" * (-len(text) % 4)).decode()
+            except Exception:
+                return []
+        return [line.strip() for line in text.splitlines() if "://" in line]
 
     async def bulk_action(self, action: str, payload: dict[str, Any], dry_run: bool = False) -> dict[str, Any]:
         names = payload.get("usernames") or payload.get("users") or []

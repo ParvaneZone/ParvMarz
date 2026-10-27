@@ -153,6 +153,17 @@ def delete_user(username:str,admin:Admin=Depends(require_perm('users.delete')),d
  for a in accounts: db.add(SyncTask(user_id=None,panel_id=a.panel_id,action='delete',payload={'username':a.remote_username,'admin_id':u.admin_id}))
  for a in accounts: db.delete(a)
  db.add(AuditLog(actor_admin_id=admin.id,action='user.delete',object_type='user',object_id=str(u.id),details={'username':u.username})); db.delete(u); db.commit(); return {'ok':True}
+@router.get('/user/{username}/sync-status')
+def user_sync_status(username:str,admin:Admin=Depends(require_perm('users.view')),db:Session=Depends(get_db)):
+ """Why does this user have no configs? Per-panel sync state plus the last task error."""
+ u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()
+ if not u: raise HTTPException(404,detail={'detail':'کاربر پیدا نشد','code':'USER_NOT_FOUND'})
+ out=[]
+ for a in db.query(UserPanelAccount).filter_by(user_id=u.id).all():
+  p=db.get(Panel,a.panel_id); t=db.query(SyncTask).filter_by(user_id=u.id,panel_id=a.panel_id).order_by(SyncTask.id.desc()).first()
+  out.append({'panel':p.name if p else a.panel_id,'panel_status':p.status if p else None,'remote_username':a.remote_username,'sync_state':a.sync_state,
+   'last_task':{'action':t.action,'state':t.state,'attempts':t.attempts,'error':t.last_error} if t else None})
+ return {'username':u.username,'status':u.status,'accounts':out}
 @router.post('/user/{username}/reset')
 def reset_user(username:str,admin:Admin=Depends(require_perm('users.reset')),db:Session=Depends(get_db)):
  u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()
