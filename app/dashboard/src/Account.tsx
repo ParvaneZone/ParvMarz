@@ -1,4 +1,5 @@
 import React from "react";
+import { copyText } from "./copy";
 import { Box, Heading, Text, SimpleGrid, Button, HStack, VStack, Input, Badge, Progress, Image, Slider, SliderTrack, SliderFilledTrack, SliderThumb, FormControl, FormLabel, Alert, AlertIcon, Code, Wrap } from "@chakra-ui/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import QRCode from "qrcode";
@@ -71,7 +72,7 @@ function TwoFactorCard({ c, enabled, left, refresh }: { c: Ctx; enabled: boolean
     {codes && <Alert status="warning" borderRadius="12px" mb={4} alignItems="flex-start"><AlertIcon /><Box>
       <Text fontWeight={700} mb={2}>{t("کدهای بازیابی را همین حالا ذخیره کنید؛ دیگر نمایش داده نمی‌شوند. هر کد یک‌بار مصرف است.", "Save these recovery codes now; they are shown only once. Each works one time.")}</Text>
       <SimpleGrid columns={{ base: 2, md: 4 }} spacing={2} mb={3}>{codes.map(x => <Code key={x} p={1} textAlign="center" className="ltr">{x}</Code>)}</SimpleGrid>
-      <HStack><Button size="sm" onClick={() => void navigator.clipboard.writeText(codes.join("\n"))}>{t("کپی", "Copy")}</Button><Button size="sm" colorScheme="blue" onClick={() => setCodes(null)}>{t("ذخیره کردم", "I saved them")}</Button></HStack></Box></Alert>}
+      <HStack><Button size="sm" onClick={() => void copyText(codes.join("\n"))}>{t("کپی", "Copy")}</Button><Button size="sm" colorScheme="blue" onClick={() => setCodes(null)}>{t("ذخیره کردم", "I saved them")}</Button></HStack></Box></Alert>}
     {!enabled && !setup && <HStack flexWrap="wrap" align="flex-end"><FormControl maxW="260px"><FormLabel fontSize="sm">{t("رمز فعلی", "Current password")}</FormLabel><Input type="password" value={pw} onChange={e => setPw(e.target.value)} /></FormControl>
       <Button colorScheme="blue" isLoading={busy} isDisabled={!pw} onClick={start}>{t("فعال‌سازی", "Set up")}</Button></HStack>}
     {!enabled && setup && <VStack align="stretch" spacing={3}>

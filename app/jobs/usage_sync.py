@@ -10,10 +10,12 @@ def traffic_delta(current:int, previous:int)->int:
     current=max(0,int(current)); previous=max(0,int(previous))
     return current-previous if current>=previous else 0
 
+_last_run:dict={}
 async def sync_usage()->dict:
- processed=0
+ processed=0; touched=set(); now_m=datetime.now(timezone.utc)
  with SessionLocal() as db:
-  panels=db.query(Panel).filter_by(enabled=True).all()
+  panels=[x for x in db.query(Panel).filter_by(enabled=True).all() if (now_m-_last_run.get(x.id,datetime.min.replace(tzinfo=timezone.utc))).total_seconds()>=max(15,(x.sync_interval or 60))-1]
+  for x in panels: _last_run[x.id]=now_m
   snapshots=[]
   for panel in panels:
    accounts=(db.query(UserPanelAccount, User.admin_id)
@@ -40,21 +42,35 @@ async def sync_usage()->dict:
    with SessionLocal() as db:
     for uid,_,remote,previous in owner_accounts:
      if remote not in usages: continue
-     current=max(0,int(usages[remote])); delta=traffic_delta(current,previous)
+     current=max(0,int(usages[remote]))
      acc=db.query(UserPanelAccount).filter_by(user_id=uid,panel_id=pid).first(); user=db.get(User,uid)
      if not acc or not user: continue
+     delta=traffic_delta(current,acc.last_remote_used_traffic)
      acc.last_remote_used_traffic=current; acc.last_synced_at=datetime.now(timezone.utc)
      if delta:
-      user.used_traffic+=delta; user.online_at=datetime.now(timezone.utc); db.add(UsageLog(user_id=uid,delta=delta,total_after=user.used_traffic))
+      touched.add(uid); user.used_traffic+=delta; user.online_at=datetime.now(timezone.utc); db.add(UsageLog(user_id=uid,delta=delta,total_after=user.used_traffic))
      reason=None
-     if user.data_limit is not None and user.used_traffic>=user.data_limit: user.status='limited'; reason='traffic limit reached'
+     if user.status!='active': pass
+     elif user.data_limit is not None and user.used_traffic>=user.data_limit: user.status='limited'; reason='traffic limit reached'
      elif user.expire and (user.expire.replace(tzinfo=timezone.utc) if user.expire.tzinfo is None else user.expire)<=datetime.now(timezone.utc): user.status='expired'; reason='expired'
      if reason:
       user.sub_token_version+=1
       for other in db.query(UserPanelAccount).filter_by(user_id=uid).all(): db.add(SyncTask(user_id=uid,panel_id=other.panel_id,action='set_status',payload={'username':other.remote_username,'enabled':False}))
      if user.status=='on_hold' and (current>0 or user.online_at):
       user.status='active'; user.expire=datetime.now(timezone.utc)+timedelta(seconds=user.on_hold_expire_duration or 2592000); user.sub_token_version+=1
-      db.add(SyncTask(user_id=uid,panel_id=pid,action='modify',payload={'username':remote,'status':'active','expire':int(user.expire.timestamp()),'data_limit':user.data_limit}))
+      for other in db.query(UserPanelAccount).filter_by(user_id=uid).all(): db.add(SyncTask(user_id=uid,panel_id=other.panel_id,action='modify',payload={'username':other.remote_username,'status':'active','expire':int(user.expire.timestamp()),'data_limit':user.data_limit}))
      processed+=1
     db.commit()
+ if touched:
+  with SessionLocal() as db:
+   for uid in touched:
+    user=db.get(User,uid)
+    if not user or user.status!='active' or user.data_limit is None: continue
+    accs=db.query(UserPanelAccount).filter_by(user_id=uid).all()
+    if len(accs)<2: continue
+    left=max(0,user.data_limit-user.used_traffic)
+    for a in accs:
+     if db.query(SyncTask).filter_by(user_id=uid,panel_id=a.panel_id,action='modify',state='pending').first(): continue
+     db.add(SyncTask(user_id=uid,panel_id=a.panel_id,action='modify',payload={'username':a.remote_username,'data_limit':a.last_remote_used_traffic+left}))
+   db.commit()
  return {'accounts_processed':processed}

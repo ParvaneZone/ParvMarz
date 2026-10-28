@@ -19,7 +19,8 @@ body{font-family:Vazirmatn,Tahoma,"Segoe UI",system-ui,sans-serif;font-size:15px
 .ltr{direction:ltr;text-align:left;word-break:break-all}
 
 .stat,.panel,.login{background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:16px;padding:18px}
-.panel{padding:22px;overflow-x:auto}
+.panel{padding:22px;overflow-x:visible;min-width:0}
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
 .login{max-width:430px;margin:10vh auto;padding:30px}
 .create-form{padding:18px;background:var(--soft);border:1px solid var(--border);border-radius:14px;margin-bottom:20px}
 .tabs{border-bottom:1px solid var(--border);padding-bottom:14px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
@@ -45,7 +46,9 @@ body{font-family:Vazirmatn,Tahoma,"Segoe UI",system-ui,sans-serif;font-size:15px
   .panel{padding:14px}
   .stat{padding:14px}
   .login{margin:5vh auto;padding:20px}
-  table{min-width:640px}
+  .tscroll table{min-width:640px}
+  .hdr{gap:8px}
+  .hdr button{padding-inline:10px}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 

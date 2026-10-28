@@ -56,7 +56,7 @@ export function PanelsTab(c: Ctx) {
       <HStack><Checkbox isChecked={f.verify_ssl} onChange={e => set("verify_ssl", e.target.checked)}>SSL</Checkbox><Checkbox isChecked={f.enabled} onChange={e => set("enabled", e.target.checked)}>{t("فعال", "Enabled")}</Checkbox></HStack>
     </SimpleGrid><HStack mt={4}><Button colorScheme="blue" onClick={save}>{t("ذخیره", "Save")}</Button><Button onClick={() => setF(null)}>{t("انصراف", "Cancel")}</Button></HStack>
       {editId && <Text mt={2} fontSize="sm" className="muted">{t("برای ویرایش، نام کاربری و رمز پنل باید دوباره وارد شود.", "Re-enter panel credentials when editing.")}</Text>}</Box>}
-    <Box overflowX="auto"><Table size="sm"><Thead><Tr><Th>ID</Th><Th>{t("نام", "Name")}</Th><Th>{t("نوع", "Type")}</Th><Th>URL</Th><Th>{t("سلامت", "Health")}</Th><Th>{t("عملیات", "Actions")}</Th></Tr></Thead>
+    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>ID</Th><Th>{t("نام", "Name")}</Th><Th>{t("نوع", "Type")}</Th><Th>URL</Th><Th>{t("سلامت", "Health")}</Th><Th>{t("عملیات", "Actions")}</Th></Tr></Thead>
       <Tbody>{(q.data || []).map((p: any) => <Tr key={p.id}><Td>{p.id}</Td><Td>{p.name}</Td><Td>{p.type}</Td><Td className="ltr">{p.base_url}</Td>
         <Td><Badge colorScheme={p.status === "healthy" ? "green" : "red"}>{p.status}</Badge>{p.last_error && <Text fontSize="xs">{p.last_error}</Text>}</Td>
         <Td><HStack flexWrap="wrap" spacing={2}>
@@ -150,7 +150,7 @@ export function TemplatesTab(c: Ctx) {
       <F label={t("ریست حجم", "Reset strategy")}><Select value={f.reset_strategy} onChange={e => set("reset_strategy", e.target.value)}>{[["no_reset", "بدون ریست"], ["day", "روزانه"], ["week", "هفتگی"], ["month", "ماهانه"], ["year", "سالانه"]].map(([x, l]) => <option key={x} value={x}>{t(l, x)}</option>)}</Select></F>
       <Checkbox isChecked={f.add_remaining_traffic} onChange={e => set("add_remaining_traffic", e.target.checked)}>{t("اضافه شدن حجم باقی‌مانده", "Add remaining traffic")}</Checkbox>
     </SimpleGrid><HStack mt={4}><Button colorScheme="blue" onClick={() => run(editId ? `/api/templates/${editId}` : "/api/templates", J(editId ? "PUT" : "POST", body()), () => setF(null))}>{t("ذخیره", "Save")}</Button><Button onClick={() => setF(null)}>{t("انصراف", "Cancel")}</Button></HStack></Box>}
-    <Box overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("نام", "Name")}</Th><Th>{t("سرویس", "Service")}</Th><Th>{t("حجم", "Traffic")}</Th><Th>{t("مدت", "Days")}</Th><Th /></Tr></Thead>
+    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("نام", "Name")}</Th><Th>{t("سرویس", "Service")}</Th><Th>{t("حجم", "Traffic")}</Th><Th>{t("مدت", "Days")}</Th><Th /></Tr></Thead>
       <Tbody>{(q.data || []).map((x: any) => <Tr key={x.id}><Td>{x.name}</Td><Td>{(sv.data || []).find((s: any) => s.id === x.service_id)?.display_name ?? x.service_id}</Td><Td>{x.data_limit == null ? "∞" : (x.data_limit / GB).toFixed(1) + " GB"}</Td><Td>{x.duration ?? "∞"}</Td>
         <Td><HStack spacing={2}><Button size="xs" onClick={() => { setEditId(x.id); setF({ name: x.name, service_id: String(x.service_id), data_gb: x.data_limit == null ? "" : String(x.data_limit / GB), duration: x.duration == null ? "" : String(x.duration), username_prefix: x.username_prefix, username_suffix: x.username_suffix, reset_strategy: x.reset_strategy, add_remaining_traffic: x.add_remaining_traffic }); }}>{t("ویرایش", "Edit")}</Button>
           <Button size="xs" colorScheme="red" onClick={() => confirm(t("حذف شود؟", "Delete?")) && run(`/api/templates/${x.id}`, J("DELETE"))}>{t("حذف", "Delete")}</Button></HStack></Td></Tr>)}</Tbody></Table></Box>
@@ -205,7 +205,7 @@ export function AdminsTab(c: Ctx) {
           <F label={t("سقف روز هر کاربر", "Max user days")}><Input type="number" value={f.max_user_days} onChange={e => set("max_user_days", e.target.value)} /><Chips opts={[["30", "30"], ["60", "60"], ["90", "90"], ["365", "365"], ["∞", ""]]} onPick={v => set("max_user_days", v)} /></F>
         </SimpleGrid></>}
       <HStack mt={4}><Button colorScheme="blue" onClick={save}>{editId ? t("ذخیره", "Save") : t("ایجاد", "Create")}</Button><Button onClick={() => { setF(null); setEditId(null); }}>{t("انصراف", "Cancel")}</Button></HStack></Box>}
-    <Box overflowX="auto"><Table size="sm"><Thead><Tr><Th>ID</Th><Th>{t("نام کاربری", "Username")}</Th><Th>{t("نقش", "Role")}</Th><Th>{t("سرویس‌ها", "Services")}</Th><Th>{t("وضعیت", "Status")}</Th><Th>{t("عملیات", "Actions")}</Th></Tr></Thead>
+    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>ID</Th><Th>{t("نام کاربری", "Username")}</Th><Th>{t("نقش", "Role")}</Th><Th>{t("سرویس‌ها", "Services")}</Th><Th>{t("وضعیت", "Status")}</Th><Th>{t("عملیات", "Actions")}</Th></Tr></Thead>
       <Tbody>{(q.data || []).map((a: any) => <Tr key={a.id}><Td>{a.id}</Td><Td>{a.username}</Td><Td>{a.role === "sudo" ? t("مدیر اصلی", "Sudo") : t("ادمین", "Admin")}</Td><Td>{a.role === "sudo" ? t("همه", "All") : (a.allowed_services || []).map((id: number) => (sv.data || []).find((s: any) => s.id === id)?.display_name ?? id).join("، ") || "—"}</Td><Td><Badge colorScheme={a.state === "active" ? "green" : a.state === "disabled" ? "red" : "orange"}>{({ active: t("فعال", "on"), disabled: t("غیرفعال", "off"), expired: t("زمان تمام", "expired"), traffic_exhausted: t("حجم تمام", "no traffic") } as any)[a.state] ?? a.state}</Badge>{a.role !== "sudo" && <Text fontSize="xs" className="ltr">{(a.used_traffic / GB).toFixed(1)}/{a.max_total_traffic == null ? "∞" : (a.max_total_traffic / GB).toFixed(0)} GB{a.expire ? " · " + a.expire.slice(0, 10) : ""}</Text>}</Td>
         <Td><HStack flexWrap="wrap" spacing={2}>
           {a.role !== "sudo" && <Button size="xs" colorScheme="blue" onClick={() => edit(a)}>{t("ویرایش دسترسی", "Edit access")}</Button>}
@@ -259,7 +259,7 @@ export function SystemTab(c: Ctx) {
       {exp && exp.count > 0 && <Button colorScheme="red" onClick={() => confirm(t(`${exp.count} کاربر حذف شود؟`, `Delete ${exp.count} users?`)) && run("/api/users/expired?dry_run=false", J("DELETE"), () => setExp(null))}>{t("حذف منقضی‌ها", "Delete expired")} ({exp.count})</Button>}</HStack>
     {exp && <Text mt={2} fontSize="sm" className="ltr">{exp.count}: {exp.users.slice(0, 30).join(", ")}</Text>}
     <Heading size="md" mt={6} mb={3}>{t("لاگ عملیات", "Audit log")}</Heading>
-    <Box overflowX="auto" maxH="360px" overflowY="auto"><Table size="sm"><Thead><Tr><Th>#</Th><Th>Admin</Th><Th>Action</Th><Th>Object</Th><Th>{t("زمان", "Time")}</Th></Tr></Thead>
+    <Box className="tscroll" overflowX="auto" maxH="360px" overflowY="auto"><Table size="sm"><Thead><Tr><Th>#</Th><Th>Admin</Th><Th>Action</Th><Th>Object</Th><Th>{t("زمان", "Time")}</Th></Tr></Thead>
       <Tbody>{(au.data?.items || []).map((x: any) => <Tr key={x.id}><Td>{x.id}</Td><Td>{x.actor_admin_id}</Td><Td>{x.action}</Td><Td>{x.object_type}:{x.object_id}</Td><Td className="ltr">{new Date(x.created_at).toLocaleString()}</Td></Tr>)}</Tbody></Table></Box>
   </Box>;
 }
@@ -305,7 +305,7 @@ export function InboundsTab(c: Ctx) {
   return <Box className="panel">
     <Heading size="md" mb={1}>{t("نام اینباندها", "Inbound names")}</Heading>
     <Text fontSize="sm" className="muted" mb={4}>{t("این نام به‌جای نام اصلی برای کاربران و ادمین‌ها نمایش داده می‌شود. خالی = نام اصلی. ابتدا پنل را همگام‌سازی کنید.", "Shown to users and admins instead of the original name. Empty = original. Sync the panel first.")}</Text>
-    <Box overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("پنل", "Panel")}</Th><Th>{t("نام اصلی", "Original")}</Th><Th>{t("نوع", "Type")}</Th><Th>{t("نام نمایشی", "Display name")}</Th><Th /></Tr></Thead>
+    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("پنل", "Panel")}</Th><Th>{t("نام اصلی", "Original")}</Th><Th>{t("نوع", "Type")}</Th><Th>{t("نام نمایشی", "Display name")}</Th><Th /></Tr></Thead>
       <Tbody>{(q.data || []).map((x: any) => <Tr key={key(x)}><Td>{x.panel_name}</Td><Td className="ltr">{x.tag}</Td><Td className="ltr">{[x.protocol, x.network, x.security].filter(Boolean).join(" / ")}</Td>
         <Td><Input size="sm" value={v[key(x)] ?? x.display_name} onChange={e => setV({ ...v, [key(x)]: e.target.value })} /></Td>
         <Td><Button size="xs" colorScheme="blue" onClick={() => run("/api/inbounds", J("PUT", { panel_id: x.panel_id, tag: x.tag, display_name: v[key(x)] ?? x.display_name }))}>{t("ذخیره", "Save")}</Button></Td></Tr>)}</Tbody></Table></Box>
