@@ -36,6 +36,7 @@ const P: Record<string, React.ReactNode> = {
   link: <><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" /><path d="M14 10a4 4 0 0 0-5.700 0l-3 3a4 4 0 0 0 5.700 5.700l1-1" /></>,
   qr: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M14 14h3v3M21 14v.01M14 21h3M21 17v4" /></>,
   list: <><path d="M8 6h13M8 12h13M8 18h13" /><path d="M3.500 6h.01M3.500 12h.01M3.500 18h.01" /></>,
+  book: <><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5Z" /><path d="M4 21h15" /><path d="M9 8h6" /></>,
   bolt: <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" />,
   wifi: <><path d="M2 9a15 15 0 0 1 20 0" /><path d="M5 12.500a10 10 0 0 1 14 0" /><path d="M8.500 16a5 5 0 0 1 7 0" /><path d="M12 19.500h.01" /></>,
   alert: <><path d="M12 3 2 20h20L12 3Z" /><path d="M12 10v5" /><path d="M12 18h.01" /></>,
