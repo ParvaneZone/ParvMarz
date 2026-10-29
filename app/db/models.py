@@ -177,7 +177,11 @@ class UsageLog(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     delta: Mapped[int] = mapped_column(BigInteger)
     total_after: Mapped[int] = mapped_column(BigInteger)
-    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)
+    # Attribution snapshot taken when the traffic was recorded (no FK: history must survive deletions).
+    admin_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    panel_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    service_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
 
 
 class AuditLog(Base):
