@@ -10,3 +10,7 @@ dist/
 node_modules/
 *.tsbuildinfo
 .deployed-commit
+repo/
+.ruff_cache/
+.pytest_cache/
+__pycache__/

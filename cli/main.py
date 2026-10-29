@@ -56,7 +56,7 @@ def reset_admin_password(username: str = typer.Option("", help="Admin username (
         admin.disabled = False
         admin.password_reset_at = datetime.now(timezone.utc)
         db.commit()
-        typer.echo(f"Password reset for '{admin.username}'. Restart the container to clear login locks.")
+        typer.echo(f"Password reset for '{admin.username}'. Use `clear-login-lock` to clear login locks.")
 
 
 
@@ -89,3 +89,13 @@ def export_openapi(directory: str = "./openapi"):
     (out / "agent.json").write_text(json.dumps(agent, ensure_ascii=False, indent=2), encoding="utf-8")
     (out / "api-fa.md").write_text(to_markdown(agent), encoding="utf-8")
     typer.echo(f"Exported to {out}/ (openapi.json = sudo only; give agents agent.json / api-fa.md)")
+
+
+@app.command()
+def clear_login_lock():
+    """Clear all login lockouts (failed-attempt counters are stored in the database)."""
+    from app.db.models import Setting
+    with SessionLocal() as db:
+        n = db.query(Setting).filter(Setting.key.like("login:%")).delete(synchronize_session=False)
+        db.commit()
+        typer.echo(f"Cleared {n} login lock(s).")

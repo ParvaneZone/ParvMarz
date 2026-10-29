@@ -25,12 +25,17 @@ def user_scope(db,admin):
  if admin.role!='sudo': q=q.filter(User.admin_id==admin.id)
  return q
 @router.get('/users',response_model=UserListOut,summary='لیست کاربران',description='نماینده فقط کاربران خودش را می‌بیند. limit حداکثر ۲۰۰. نیازمند دسترسی users.view.',responses=errs(401,403))
-def list_users(q:str|None=None,status:str|None=None,admin_id:int|None=None,limit:int=Query(50,ge=1,le=200),offset:int=Query(0,ge=0),admin:Admin=Depends(require_perm('users.view')),db:Session=Depends(get_db)):
+def list_users(q:str|None=None,status:str|None=None,admin_id:int|None=None,service_id:int|None=None,expiring_in_days:int|None=Query(None,ge=0,le=3650),near_limit_percent:int|None=Query(None,ge=1,le=100),sort:str=Query('-id',pattern='^-?(id|username|used_traffic|expire|created_at)$'),limit:int=Query(50,ge=1,le=200),offset:int=Query(0,ge=0),admin:Admin=Depends(require_perm('users.view')),db:Session=Depends(get_db)):
  query=user_scope(db,admin)
  if q: query=query.filter(User.username.ilike(f'%{q}%'))
  if status: query=query.filter(User.status==status)
  if admin.role=='sudo' and admin_id is not None: query=query.filter(User.admin_id==admin_id)
- total=query.count(); rows=query.order_by(User.id.desc()).offset(offset).limit(limit).all()
+ if service_id is not None: query=query.filter(User.service_id==service_id)
+ if expiring_in_days is not None:
+  now=datetime.now(timezone.utc); query=query.filter(User.expire.is_not(None),User.expire>now,User.expire<=now+timedelta(days=expiring_in_days))
+ if near_limit_percent is not None: query=query.filter(User.data_limit.is_not(None),User.data_limit>0,User.used_traffic*100>=User.data_limit*near_limit_percent)
+ col=getattr(User,sort.lstrip('-')); order=col.desc() if sort.startswith('-') else col.asc()
+ total=query.count(); rows=query.order_by(order,User.id.desc()).offset(offset).limit(limit).all()
  show=has_perm(admin,'users.view_sub')
  return {'total':total,'items':[serialize_user(u,show) for u in rows]}
 def serialize_user(u,show_sub=True):
@@ -146,7 +151,10 @@ def update_user(username:str,body:UserUpdate,admin:Admin=Depends(require_perm('u
   setattr(u,k,v)
  if 'status' in body or 'data_limit' in body or 'expire' in body:
   for a in db.query(UserPanelAccount).filter_by(user_id=u.id).all(): db.add(SyncTask(user_id=u.id,panel_id=a.panel_id,action='modify',payload={'username':a.remote_username,'status':u.status,'data_limit':u.data_limit,'expire':int(u.expire.timestamp()) if u.expire else 0}))
- u.sub_token_version += 1
+ if 'data_limit_reset_strategy' in body:
+  from app.db.models import Setting
+  s=db.get(Setting,f'user_reset:{u.id}')
+  if s: db.delete(s)
  db.add(AuditLog(actor_admin_id=admin.id,action='user.update',object_type='user',object_id=str(u.id),details={'fields':list(body)})); db.commit(); return serialize_user(u,has_perm(admin,'users.view_sub'))
 @router.delete('/user/{username}',response_model=OkOut,summary='حذف کاربر',responses=errs(401,403,404))
 def delete_user(username:str,admin:Admin=Depends(require_perm('users.delete')),db:Session=Depends(get_db)):
@@ -194,7 +202,7 @@ def activate_next(username:str,admin:Admin=Depends(require_perm('users.next_plan
  plan=u.next_plan
  try: new_limit,new_expire,remaining_added=apply_next_plan(u.data_limit,u.used_traffic,plan)
  except (ValueError,TypeError): raise HTTPException(422,detail={'detail':'تعریف پلن بعدی نامعتبر است','code':'INVALID_NEXT_PLAN'})
- u.data_limit=new_limit; u.used_traffic=0; u.expire=new_expire; u.status='active'; u.next_plan=None; u.sub_token_version+=1
+ u.data_limit=new_limit; u.used_traffic=0; u.expire=new_expire; u.status='active'; u.next_plan=None
  for a in db.query(UserPanelAccount).filter_by(user_id=u.id).all(): db.add(SyncTask(user_id=u.id,panel_id=a.panel_id,action='modify',payload={'username':a.remote_username,'data_limit':u.data_limit,'expire':int(u.expire.timestamp()),'status':'active'}))
  db.add(AuditLog(actor_admin_id=admin.id,action='user.active_next',object_type='user',object_id=str(u.id),details={'remaining_added':remaining_added})); db.commit(); return serialize_user(u,has_perm(admin,'users.view_sub'))
 @router.post('/user/{username}/set-owner')

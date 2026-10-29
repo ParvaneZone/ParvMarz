@@ -13,7 +13,7 @@ function useRun({ api, t, toast }: Ctx, keys: string[]) {
   const qc = useQueryClient();
   return async (path: string, init: RequestInit, after?: () => void) => {
     try { const r = await api(path, init); await Promise.all(keys.map(k => qc.invalidateQueries({ queryKey: [k] }))); toast({ title: t("انجام شد", "Done"), status: "success" }); after?.(); return r; }
-    catch (e) { toast({ title: msg(e), status: "error" }); }
+    catch (e) { toast({ title: t("خطا", "Error"), description: msg(e), status: "error", duration: 15000, isClosable: true }); }
   };
 }
 const F = ({ label, children }: { label: string; children: React.ReactNode }) => <FormControl><FormLabel>{label}</FormLabel>{children}</FormControl>;
@@ -179,9 +179,19 @@ export function AdminsTab(c: Ctx) {
   const allSv: number[] = (sv.data || []).map((s: any) => s.id);
   const toggle = (arr: any[], v: any, on: boolean) => (on ? [...arr, v] : arr.filter(x => x !== v));
   const limits = () => ({ max_users: num(f.max_users), max_total_traffic: fromGB(f.max_total_gb), max_user_traffic: fromGB(f.max_user_gb), max_user_days: num(f.max_user_days), expire: f.expire ? new Date(f.expire + "T23:59:59").toISOString() : null, allowed_services: f.services, permissions: Object.fromEntries(allKeys.map(k => [k, !!f.perms[k]])) });
-  const save = () => editId
+  const check = (): string => {
+    if (editId) return "";
+    if (!/^[A-Za-z0-9_.-]{3,80}$/.test(f.username)) return t("نام کاربری: حداقل ۳ کاراکتر و فقط حروف انگلیسی/عدد/_ . -", "Username: min 3 chars, letters/digits/_ . - only");
+    if ((f.password || "").length < 12) return t(`رمز: حداقل ۱۲ کاراکتر (الان ${(f.password || "").length})`, `Password: min 12 chars (now ${(f.password || "").length})`);
+    for (const [k, l] of [["max_users", t("حداکثر کاربر", "Max users")], ["max_total_gb", t("سقف کل حجم", "Total cap")], ["max_user_gb", t("سقف حجم کاربر", "Per-user cap")], ["max_user_days", t("سقف روز", "Max days")]]) if (f[k] !== "" && !(Number(f[k]) >= 0)) return `${l}: ${t("عدد نامعتبر", "invalid number")}`;
+    return "";
+  };
+  const save = () => { const bad = check(); if (bad) { c.toast({ title: bad, status: "warning" }); return; } doSave(); };
+  const doSave = () => editId
     ? run(`/api/admins/${editId}`, J("PATCH", limits()), () => { setF(null); setEditId(null); })
-    : run("/api/admins", J("POST", { username: f.username, password: f.password, role: f.role, ...limits() }), () => setF(null));
+    : run("/api/admins", J("POST", { username: f.username, password: f.password, role: f.role, ...limits() }), () => setF(null)).then((r: any) => {
+        if (r?.warnings?.length) c.toast({ title: t("ادمین ساخته شد، ولی:", "Admin created, but:"), description: r.warnings.join("\n"), status: "warning", duration: 12000, isClosable: true });
+      });
   const edit = (a: any) => { setEditId(a.id); setF({ ...empty, username: a.username, role: a.role, max_users: a.max_users ?? "", max_total_gb: toGB(a.max_total_traffic), max_user_gb: toGB(a.max_user_traffic), max_user_days: a.max_user_days ?? "", expire: a.expire ? a.expire.slice(0, 10) : "", services: a.allowed_services || [], perms: Object.keys(a.permissions || {}).length ? a.permissions : Object.fromEntries(allKeys.map(k => [k, true])) }); };
   const isAdmin = f?.role === "admin";
   return <Box className="panel">
