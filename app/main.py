@@ -8,7 +8,7 @@ from app.config import settings
 from app.db.session import Base, engine, SessionLocal
 from app.db.models import Admin
 from app.core.security import hash_password
-from app.routers import auth, panels, system, subscription, admins, services, users, templates, bulk, inbounds, usage
+from app.routers import auth, panels, system, subscription, admins, services, users, templates, bulk, inbounds, usage, ops
 from app.jobs.scheduler import start_scheduler, stop_scheduler
 
 @asynccontextmanager
@@ -44,6 +44,7 @@ app.include_router(templates.router)
 app.include_router(bulk.router)
 app.include_router(inbounds.router)
 app.include_router(usage.router)
+app.include_router(ops.router)
 
 @app.middleware("http")
 async def security_headers(request, call_next):
