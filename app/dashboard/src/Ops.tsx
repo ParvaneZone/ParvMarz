@@ -36,6 +36,19 @@ export function LiveTab({ api, t }: Ctx) {
   </Box>;
 }
 
+/* ---------- User locations (by subscription IP) ---------- */
+export function GeoTab({ api, t }: Ctx) {
+  const q = useQuery({ queryKey: ["geo"], queryFn: () => api("/api/geo"), refetchInterval: 15000 });
+  const items: any[] = q.data || [];
+  return <Box className="panel">
+    <HStack justify="space-between" mb={1} flexWrap="wrap"><Heading size="md">{t("موقعیت کاربران", "User locations")} ({items.length})</Heading><Button size="sm" variant="outline" onClick={() => void q.refetch()}>{t("بروزرسانی", "Refresh")}</Button></HStack>
+    <Text className="muted" fontSize="sm" mb={3}>{t("بر اساس IP دریافت‌کننده‌ی سابسکریپشن و اینباندهایی که به او داده شده.", "Based on the IP that fetched the subscription and the inbounds served to it.")}</Text>
+    <Box className="tscroll"><Table size="sm"><Thead><Tr><Th>{t("کاربر", "User")}</Th><Th>{t("اینباند", "Inbound")}</Th><Th>{t("منطقه", "Location")}</Th><Th>IP</Th><Th>ISP</Th><Th>{t("آخرین", "Last")}</Th></Tr></Thead>
+      <Tbody>{items.map((r, i) => <Tr key={i}><Td className="ltr">{r.username}</Td><Td className="ltr">{(r.inbounds || []).join(", ")}</Td><Td>{[r.country, r.region, r.city].filter(Boolean).join(" / ") || "—"}</Td><Td className="ltr">{r.ip}</Td><Td className="ltr">{r.isp}</Td><Td className="ltr">{when(r.last_seen)}</Td></Tr>)}
+        {!q.isLoading && items.length === 0 && <Tr><Td colSpan={6} className="muted">{t("هنوز داده‌ای نیست", "No data yet")}</Td></Tr>}</Tbody></Table></Box>
+  </Box>;
+}
+
 /* ---------- Diagnostics ---------- */
 export function DiagnosticsTab({ api, t }: Ctx) {
   const q = useQuery({ queryKey: ["diagnostics"], queryFn: () => api("/api/system/diagnostics"), refetchInterval: 15000 });

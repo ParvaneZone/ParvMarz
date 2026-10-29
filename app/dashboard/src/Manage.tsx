@@ -104,7 +104,7 @@ export function ServicesTab(c: Ctx) {
   const q = useQuery({ queryKey: ["services"], queryFn: () => api("/api/services") });
   const panels = useQuery({ queryKey: ["panels"], queryFn: () => api("/api/panels") });
   const pname = (id: number) => (panels.data || []).find((p: any) => p.id === id)?.name ?? id;
-  const empty = { name: "", display_name: "", description: "", enabled: true, sort_order: 0, sub_remark_template: "{service} | {server}" };
+  const empty = { name: "", display_name: "", description: "", enabled: true, sort_order: 0, sub_remark_template: "{service} | {server}", inbound_mode: "all", inbound_interval: 60, inbound_count: 1 };
   const [f, setF] = React.useState<any>(null); const [editId, setEditId] = React.useState<number | null>(null); const [addFor, setAddFor] = React.useState<number | null>(null);
   const set = (k: string, v: any) => setF({ ...f, [k]: v });
   return <Box className="panel">
@@ -115,12 +115,15 @@ export function ServicesTab(c: Ctx) {
       <F label={t("توضیحات", "Description")}><Input value={f.description} onChange={e => set("description", e.target.value)} /></F>
       <F label={t("ترتیب", "Sort order")}><Input type="number" value={f.sort_order} onChange={e => set("sort_order", Number(e.target.value))} /></F>
       <F label={t("قالب ریمارک", "Remark template")}><Input className="ltr" value={f.sub_remark_template} onChange={e => set("sub_remark_template", e.target.value)} /><Chips opts={[[t("+ نام سرویس", "+ service"), "{service}"], [t("+ نام سرور", "+ server"), "{server}"], ["|", " | "], ["-", " - "]]} onPick={x => set("sub_remark_template", (f.sub_remark_template || "") + x)} /></F>
+      <F label={t("حالت اینباندها", "Inbound mode")}><Select value={f.inbound_mode} onChange={e => set("inbound_mode", e.target.value)}><option value="all">{t("همه", "All")}</option><option value="rotate">{t("چرخشی", "Rotate")}</option><option value="random">{t("رندوم", "Random")}</option></Select></F>
+      {f.inbound_mode !== "all" && <F label={t("تعداد اینباند در هر دریافت", "Inbounds per fetch")}><Input type="number" min={1} value={f.inbound_count} onChange={e => set("inbound_count", Number(e.target.value))} /></F>}
+      {f.inbound_mode === "rotate" && <F label={t("چرخش هر چند دقیقه", "Rotate every (min)")}><Input type="number" min={1} value={f.inbound_interval} onChange={e => set("inbound_interval", Number(e.target.value))} /></F>}
       <F label={t("فعال", "Enabled")}><Switch isChecked={f.enabled} onChange={e => set("enabled", e.target.checked)} /></F>
     </SimpleGrid><HStack mt={4}><Button colorScheme="blue" onClick={() => run(editId ? `/api/services/${editId}` : "/api/services", J(editId ? "PUT" : "POST", f), () => setF(null))}>{t("ذخیره", "Save")}</Button><Button onClick={() => setF(null)}>{t("انصراف", "Cancel")}</Button></HStack></Box>}
     {(q.data || []).map((s: any) => <Box key={s.id} mb={4} p={3} borderWidth="1px" borderRadius="12px">
-      <HStack justify="space-between" flexWrap="wrap"><Box><Heading size="sm">{s.display_name} <Badge>{s.name}</Badge> {!s.enabled && <Badge colorScheme="red">off</Badge>}</Heading><Text fontSize="sm" className="muted">{s.description}</Text></Box>
+      <HStack justify="space-between" flexWrap="wrap"><Box><Heading size="sm">{s.display_name} <Badge>{s.name}</Badge> {!s.enabled && <Badge colorScheme="red">off</Badge>}</Heading><Text fontSize="sm" className="muted">{s.description}{s.inbound_mode && s.inbound_mode !== "all" ? ` · ${s.inbound_mode === "rotate" ? t("چرخشی", "rotate") : t("رندوم", "random")} ×${s.inbound_count}` : ""}</Text></Box>
         {!s.inbound_names && <HStack spacing={2}><Button size="xs" onClick={() => setAddFor(addFor === s.id ? null : s.id)}>{t("افزودن پنل", "Add panel")}</Button>
-          <Button size="xs" onClick={() => { setEditId(s.id); setF({ ...empty, name: s.name, display_name: s.display_name, description: s.description, enabled: s.enabled, sort_order: s.sort_order, sub_remark_template: s.sub_remark_template || empty.sub_remark_template }); }}>{t("ویرایش", "Edit")}</Button>
+          <Button size="xs" onClick={() => { setEditId(s.id); setF({ ...empty, name: s.name, display_name: s.display_name, description: s.description, enabled: s.enabled, sort_order: s.sort_order, sub_remark_template: s.sub_remark_template || empty.sub_remark_template, inbound_mode: s.inbound_mode || "all", inbound_interval: s.inbound_interval || 60, inbound_count: s.inbound_count || 1 }); }}>{t("ویرایش", "Edit")}</Button>
           <Button size="xs" colorScheme="red" onClick={() => confirm(t("حذف شود؟", "Delete?")) && run(`/api/services/${s.id}`, J("DELETE"))}>{t("حذف", "Delete")}</Button></HStack>}</HStack>
       {s.inbound_names?.length > 0 && <Text fontSize="sm" mt={2}>{s.inbound_names.join("، ")}</Text>}
       <Table size="sm" mt={2}><Tbody>{s.items.map((i: any) => <Tr key={i.id}><Td>{pname(i.panel_id)}</Td><Td className="ltr">{(i.selected_items || []).join(", ") || t("همه", "all")}</Td><Td>P{i.priority}</Td><Td><Button size="xs" colorScheme="red" variant="outline" aria-label={t("حذف","Remove")} onClick={() => run(`/api/services/${s.id}/items/${i.id}`, J("DELETE"))}><Icon name="x" size={14} /></Button></Td></Tr>)}</Tbody></Table>

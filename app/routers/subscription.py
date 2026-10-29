@@ -15,6 +15,8 @@ import logging
 log=logging.getLogger('jinxdata.sub')
 _fetch_err:dict[int,str]={}
 from app.subscription.merge import deduplicate_links, apply_aliases, to_clash, to_singbox, to_v2ray_json
+from app.subscription.pick import pick_links
+from app.subscription.geo import client_ip, spawn_record
 from app.subscription.page import render_subscription_page
 router=APIRouter(tags=['subscription'])
 _cache:dict[str,tuple[float,list[str]]]={}
@@ -65,7 +67,7 @@ def _load_user(token:str):
   else: user=db.query(User).filter(func.lower(User.username)==claims['u'].lower()).first()  # legacy token
   if not user or user.sub_token_version!=claims['v']: raise HTTPException(404,'Subscription not found')
   svc=db.get(Service,user.service_id)
-  return {'id':user.id,'username':user.username,'version':user.sub_token_version,'status':user.status,'used':user.used_traffic,'limit':user.data_limit,'expire':_ts(user.expire) or 0,'created':_ts(user.created_at) or 0,'service_id':user.service_id,'service_name':(svc.display_name or svc.name) if svc else '','admin_id':user.admin_id,'online_at':_ts(user.online_at),'reset':user.data_limit_reset_strategy,'on_hold_days':(user.on_hold_expire_duration or 0)//86400 or None}
+  return {'id':user.id,'username':user.username,'version':user.sub_token_version,'status':user.status,'used':user.used_traffic,'limit':user.data_limit,'expire':_ts(user.expire) or 0,'created':_ts(user.created_at) or 0,'service_id':user.service_id,'service_name':(svc.display_name or svc.name) if svc else '','inb_mode':svc.inbound_mode if svc else 'all','inb_interval':svc.inbound_interval if svc else 60,'inb_count':svc.inbound_count if svc else 1,'admin_id':user.admin_id,'online_at':_ts(user.online_at),'reset':user.data_limit_reset_strategy,'on_hold_days':(user.on_hold_expire_duration or 0)//86400 or None}
 def _inactive(u)->bool:
  return u['status']!='active' or bool(u['expire'] and u['expire']<=int(time.time())) or (u['limit'] is not None and u['used']>=u['limit'])
 def _page_state(u)->str:
@@ -129,10 +131,12 @@ async def subscription(token:str,request:Request,client_type:str='v2ray'):
  inactive=_inactive(u)
  links=[] if inactive else await _remote_links(u['id'],u['version'])
  parsed=deduplicate_links(links)
+ if links and not _wants_page(request): parsed=pick_links(parsed,u['inb_mode'],u['inb_interval'],u['inb_count'],u['id'])
  if client_type=='v2ray' and _wants_page(request):
   nonce=secrets.token_urlsafe(16); sub_url=f"{_public_base(request)}/sub/{token}"
   body=render_subscription_page(nonce=nonce,brand="Link Sub",username=u['username'],state=_page_state(u),used=u['used'],limit=u['limit'],expire=u['expire'],created=u['created'],now=int(time.time()),online_at=u['online_at'],service=u['service_name'],reset=u['reset'],on_hold_days=u['on_hold_days'],links=parsed,sub_url=sub_url,qr_svg=_qr_svg(sub_url))
   return HTMLResponse(body,headers={'Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow','Content-Security-Policy':f"default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-{nonce}'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"})
+ if links and parsed and request.method=='GET': spawn_record(u['id'],client_ip(request),[p['name'] for p in parsed])
  if not links:
   off=_off_links(u)
   if off: parsed=deduplicate_links(off)

@@ -7,7 +7,7 @@ from app.db.session import get_db
 from app.schemas import ServiceOut, errs
 router=APIRouter(prefix='/api/services',tags=['services'])
 class ServiceIn(BaseModel):
- name:str=Field(min_length=1,max_length=120); display_name:str=Field(min_length=1,max_length=120); description:str=''; enabled:bool=True; sort_order:int=0; sub_remark_template:str='{service} | {server}'
+ name:str=Field(min_length=1,max_length=120); display_name:str=Field(min_length=1,max_length=120); description:str=''; enabled:bool=True; sort_order:int=0; sub_remark_template:str='{service} | {server}'; inbound_mode:str=Field('all',pattern='^(all|rotate|random)$'); inbound_interval:int=Field(60,ge=1,le=100000); inbound_count:int=Field(1,ge=1,le=1000)
 class ItemIn(BaseModel): panel_id:int; selected_items:list=[]; priority:int=0; enabled:bool=True
 @router.get('',response_model=list[ServiceOut],response_model_exclude_unset=True,summary='لیست سرویس‌ها',description='نماینده فقط سرویس‌های فعالِ مجاز خودش را می‌بیند. برای ساخت کاربر از id سرویس استفاده کنید.',responses=errs(401))
 def list_services(admin:Admin=Depends(current_admin),db:Session=Depends(get_db)):
@@ -17,7 +17,7 @@ def list_services(admin:Admin=Depends(current_admin),db:Session=Depends(get_db))
  out=[]
  for s in q.order_by(Service.sort_order,Service.id).all():
   items=db.query(ServiceItem).filter(ServiceItem.service_id==s.id).all()
-  d={'id':s.id,'name':s.name,'display_name':s.display_name,'description':s.description,'enabled':s.enabled,'sort_order':s.sort_order,'sub_remark_template':s.sub_remark_template}
+  d={'id':s.id,'name':s.name,'display_name':s.display_name,'description':s.description,'enabled':s.enabled,'sort_order':s.sort_order,'sub_remark_template':s.sub_remark_template,'inbound_mode':s.inbound_mode,'inbound_interval':s.inbound_interval,'inbound_count':s.inbound_count}
   if admin.role=='sudo': d['items']=[{'id':i.id,'panel_id':i.panel_id,'selected_items':i.selected_items,'priority':i.priority,'enabled':i.enabled} for i in items]
   else:
    names=[]

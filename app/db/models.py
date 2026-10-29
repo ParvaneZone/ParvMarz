@@ -97,6 +97,9 @@ class Service(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     sub_remark_template: Mapped[str] = mapped_column(String(200), default="{service} | {server}")
+    inbound_mode: Mapped[str] = mapped_column(String(10), default="all", server_default="all")
+    inbound_interval: Mapped[int] = mapped_column(Integer, default=60, server_default="60")
+    inbound_count: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
 
 
 class ServiceItem(Base):
@@ -213,3 +216,20 @@ class ApiKey(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expire: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class SubAccess(Base):
+    """Last client IP (+ geo) that fetched a user's subscription, and which inbounds it was served."""
+    __tablename__ = "sub_access"
+    __table_args__ = (UniqueConstraint("user_id", "ip", name="uq_sub_access_user_ip"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    ip: Mapped[str] = mapped_column(String(64))
+    inbounds: Mapped[list] = mapped_column(JSON, default=list)
+    country: Mapped[str] = mapped_column(String(80), default="")
+    region: Mapped[str] = mapped_column(String(120), default="")
+    city: Mapped[str] = mapped_column(String(120), default="")
+    isp: Mapped[str] = mapped_column(String(160), default="")
+    hits: Mapped[int] = mapped_column(Integer, default=1)
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, index=True)

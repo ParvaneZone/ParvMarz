@@ -170,6 +170,9 @@ class ServiceOut(_Out):
     enabled: bool
     sort_order: int
     sub_remark_template: str
+    inbound_mode: str = "all"
+    inbound_interval: int = 60
+    inbound_count: int = 1
     items: list[dict[str, Any]] = Field(description="برای sudo جزئیات پنل‌ها؛ برای نماینده همیشه خالی")
     inbound_names: list[str] | None = Field(default=None, description="فقط برای نماینده")
 
