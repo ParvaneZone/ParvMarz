@@ -74,3 +74,18 @@ def disable_2fa(username: str = typer.Option(..., help="Admin username")):
         admin.recovery_codes = []
         db.commit()
         typer.echo(f"2FA disabled for '{admin.username}'.")
+
+
+@app.command()
+def export_openapi(directory: str = "./openapi"):
+    """Export private API docs offline: openapi.json (full), agent.json (agents only) and api-fa.md (agents, Persian)."""
+    import json
+    from pathlib import Path
+    from app.core.apidocs import build_schema, to_markdown
+    from app.main import app as fastapi_app
+    out = Path(directory); out.mkdir(parents=True, exist_ok=True)
+    (out / "openapi.json").write_text(json.dumps(build_schema(fastapi_app, False), ensure_ascii=False, indent=2), encoding="utf-8")
+    agent = build_schema(fastapi_app, True)
+    (out / "agent.json").write_text(json.dumps(agent, ensure_ascii=False, indent=2), encoding="utf-8")
+    (out / "api-fa.md").write_text(to_markdown(agent), encoding="utf-8")
+    typer.echo(f"Exported to {out}/ (openapi.json = sudo only; give agents agent.json / api-fa.md)")

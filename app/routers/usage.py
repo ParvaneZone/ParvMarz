@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.security import require_sudo
 from app.db.models import Admin, Panel, Service, UsageLog
 from app.db.session import get_db
+from app.schemas import UsageReportOut, errs
 
 router = APIRouter(prefix="/api/usage", tags=["usage"])
 
@@ -22,7 +23,7 @@ def _bucket_expr(db: Session, bucket: str, offset_min: int):
     return func.to_char(UsageLog.recorded_at + timedelta(minutes=offset_min), fmt)
 
 
-@router.get("")
+@router.get("", response_model=UsageReportOut, summary="گزارش مصرف (فقط مدیر اصلی)", responses=errs(401, 403))
 def usage(start: datetime, end: datetime, bucket: str = Query("day", pattern="^(day|hour)$"),
           tz_offset: int = Query(0, ge=-840, le=840),
           _: Admin = Depends(require_sudo), db: Session = Depends(get_db)):

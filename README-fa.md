@@ -27,7 +27,7 @@ docker compose exec subhub cat /app/data/initial-admin.txt
 - **پورت**: اگر ۸۰۰۰ روی سرور اشغال است، در `.env` مقدار `PORT=8080` (یا هر پورت آزاد) بگذارید؛ داشبورد روی `http://IP:PORT/dashboard/` است.
 - `PUBLIC_BASE_URL` خالی = `http://localhost:PORT`. برای لینک اشتراک درست، آن را روی آدرس واقعی (`http://IP:PORT` یا `https://دامنه`) بگذارید و `docker compose up -d` را دوباره بزنید.
 - شبکهٔ کند/ایران: در `.env` مقدار `NPM_REGISTRY=https://registry.npmmirror.com` (و در صورت نیاز `PIP_INDEX_URL`) را بگذارید. تایم‌اوت و retry پیش‌فرض بالاست.
-- سلامت: `/health` و `/api/health`؛ داشبورد: `/dashboard/`؛ مستندات: `/docs`.
+- سلامت: `/health` و `/api/health`؛ داشبورد: `/dashboard/`؛ مستندات خصوصی: پایین‌تر.
 
 ### رمز مدیر
 
@@ -136,3 +136,12 @@ docker compose exec subhub python -m cli disable-2fa --username admin
 
 همگام‌سازی پنل فقط **اینباندها** را نمایش و برای انتخاب در سرویس‌ها نگه می‌دارد. سرویس‌های Rebecca و گروه‌های PasarGuard به ادمین نشان داده نمی‌شوند؛ چون آن پنل‌ها بدون آن‌ها کاربر نمی‌سازند، برنامه موقع ساخت کاربر خودش سرویس/گروهی را که اینباندهای انتخاب‌شده را پوشش می‌دهد پیدا می‌کند. بعد از آپدیت یک‌بار روی هر پنل «همگام‌سازی» بزنید.
 
+
+
+## کلید API و مستندات خصوصی (برای ربات‌های نمایندگان)
+
+- ساخت کلید: نماینده با ورود عادی `POST /api/admin/api-keys` (یا مدیر اصلی `POST /api/admins/{id}/api-keys`) با `{"name":"bot","expire_days":90}`. کلید کامل (`pmk_...`) فقط یک‌بار نمایش داده می‌شود؛ حداکثر ۵ کلید فعال برای هر ادمین. برای مدیر اصلی (sudo) کلید صادر نمی‌شود.
+- استفاده: هدر `X-API-Key: <key>` یا `Authorization: Bearer <key>`. کلید دقیقاً همان دسترسی‌ها و سهمیه‌های ادمین صاحبش را دارد (ادمین معلق/غیرفعال = کلید رد می‌شود) و نمی‌تواند رمز، 2FA یا کلیدها را مدیریت کند. ابطال: `DELETE /api/admin/api-keys/{id}`.
+- مستندات: `GET /api/docs/openapi.json` و `GET /api/docs/api.md` فقط با توکن/کلید معتبر؛ مدیر اصلی اسکیمای کامل و نماینده فقط مسیرهای نماینده را می‌بیند.
+- خروجی آفلاین برای دادن خصوصی به نمایندگان: `python -m cli export-openapi ./openapi` ← `agent.json` و `api-fa.md` (به نماینده بدهید) و `openapi.json` (کامل، فقط برای خودتان).
+- `/docs` و `/openapi.json` عمومی به‌صورت پیش‌فرض خاموش است (`OPENAPI_ENABLED=false`).

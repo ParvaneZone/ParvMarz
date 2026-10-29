@@ -11,10 +11,12 @@ from app.db.session import get_db
 from app.core.plans import apply_next_plan
 from app.core.access import pick_group
 from app.core.permissions import has_perm
+from app.schemas import BulkCreateOut, OkOut, SyncStatusOut, UserListOut, UserOut, UserUpdate, UserUsageOut, errs
 router=APIRouter(prefix='/api',tags=['users'])
 Username = Annotated[str, StringConstraints(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9_.-]+$")]
 class UserIn(BaseModel):
  username:Username; service_id:int; data_limit:int|None=Field(default=None,ge=0); duration_days:int|None=Field(default=30,ge=1,le=36500); expire:datetime|None=None; status:str='active'; on_hold:bool=False; data_limit_reset_strategy:str='no_reset'; note:str=''; next_plan:dict|None=None
+ model_config={'json_schema_extra':{'example':{'username':'ali_01','service_id':1,'data_limit':32212254720,'duration_days':30,'note':''}}}
 
 def allowed(admin:Admin, service_id:int):
  if admin.role!='sudo' and service_id not in (admin.allowed_services or []): raise HTTPException(403,detail={'detail':'به این سرویس دسترسی ندارید','code':'SERVICE_FORBIDDEN'})
@@ -22,7 +24,7 @@ def user_scope(db,admin):
  q=db.query(User)
  if admin.role!='sudo': q=q.filter(User.admin_id==admin.id)
  return q
-@router.get('/users')
+@router.get('/users',response_model=UserListOut,summary='لیست کاربران',description='نماینده فقط کاربران خودش را می‌بیند. limit حداکثر ۲۰۰. نیازمند دسترسی users.view.',responses=errs(401,403))
 def list_users(q:str|None=None,status:str|None=None,admin_id:int|None=None,limit:int=Query(50,ge=1,le=200),offset:int=Query(0,ge=0),admin:Admin=Depends(require_perm('users.view')),db:Session=Depends(get_db)):
  query=user_scope(db,admin)
  if q: query=query.filter(User.username.ilike(f'%{q}%'))
@@ -34,7 +36,7 @@ def list_users(q:str|None=None,status:str|None=None,admin_id:int|None=None,limit
 def serialize_user(u,show_sub=True):
  token=issue_subscription_token(u.username,int(u.created_at.timestamp()),u.sub_token_version,user_id=u.id)
  return {'id':u.id,'username':u.username,'admin_id':u.admin_id,'service_id':u.service_id,'status':u.status,'data_limit':u.data_limit,'used_traffic':u.used_traffic,'expire':u.expire,'note':u.note,'created_at':u.created_at,'subscription_url':f'/sub/{token}' if show_sub else None}
-@router.post('/user')
+@router.post('/user',response_model=UserOut,summary='ساخت کاربر',description='حجم به بایت است. سرویس باید در allowed_services نماینده باشد و سهمیه‌ها (تعداد/حجم/مدت) بررسی می‌شود. ساخت روی پنل‌ها غیرهمزمان انجام می‌شود (sync-status را ببینید).',responses=errs(401,403,404,409))
 def create_user(body:UserIn,admin:Admin=Depends(require_perm('users.create')),db:Session=Depends(get_db)):
  allowed(admin,body.service_id)
  deny=lambda: HTTPException(403,detail={'detail':'این دسترسی برای شما فعال نیست','code':'PERMISSION_DENIED'})
@@ -99,7 +101,7 @@ def create_user(body:UserIn,admin:Admin=Depends(require_perm('users.create')),db
 class BulkCreate(BaseModel):
  prefix:Annotated[str,StringConstraints(min_length=1,max_length=100,pattern=r'^[A-Za-z0-9_.-]+$')]; count:int=Field(ge=1,le=100); start:int=Field(default=1,ge=0)
  service_id:int; data_limit:int|None=Field(default=None,ge=0); duration_days:int|None=Field(default=30,ge=1,le=36500); on_hold:bool=False; note:str=''
-@router.post('/users/bulk-create')
+@router.post('/users/bulk-create',response_model=BulkCreateOut,response_model_exclude_unset=True,summary='ساخت گروهی کاربر',description='نام‌ها = prefix + شماره از start. با اولین خطا متوقف می‌شود و failed_at و error برمی‌گردد. نیازمند users.create_bulk.',responses=errs(401,403))
 def bulk_create(body:BulkCreate,admin:Admin=Depends(require_perm('users.create_bulk')),db:Session=Depends(get_db)):
  created=[]
  for i in range(body.start,body.start+body.count):
@@ -108,13 +110,14 @@ def bulk_create(body:BulkCreate,admin:Admin=Depends(require_perm('users.create_b
    db.rollback(); return {'created':created,'failed_at':f'{body.prefix}{i}','error':e.detail}
   created.append({'username':r['username'],'subscription_url':r['subscription_url']})
  return {'created':created}
-@router.get('/user/{username}')
+@router.get('/user/{username}',response_model=UserOut,summary='دریافت یک کاربر',responses=errs(401,403,404))
 def get_user(username:str,admin:Admin=Depends(require_perm('users.view')),db:Session=Depends(get_db)):
  u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()
  if not u: raise HTTPException(404,detail={'detail':'کاربر پیدا نشد','code':'USER_NOT_FOUND'})
  return serialize_user(u,has_perm(admin,'users.view_sub'))
-@router.put('/user/{username}')
-def update_user(username:str,body:dict,admin:Admin=Depends(require_perm('users.edit')),db:Session=Depends(get_db)):
+@router.put('/user/{username}',response_model=UserOut,summary='ویرایش کاربر',description='فقط فیلدهای ارسال‌شده تغییر می‌کنند. هر فیلد دسترسی جدا دارد (users.edit_status/edit_traffic/edit_expire/edit_note).',responses=errs(401,403,404))
+def update_user(username:str,body:UserUpdate,admin:Admin=Depends(require_perm('users.edit')),db:Session=Depends(get_db)):
+ body=body.model_dump(exclude_unset=True)
  u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()
  if not u: raise HTTPException(404,detail={'detail':'کاربر پیدا نشد','code':'USER_NOT_FOUND'})
  fields={'status','data_limit','expire','note','data_limit_reset_strategy','next_plan','on_hold_expire_duration','on_hold_timeout'}
@@ -145,7 +148,7 @@ def update_user(username:str,body:dict,admin:Admin=Depends(require_perm('users.e
   for a in db.query(UserPanelAccount).filter_by(user_id=u.id).all(): db.add(SyncTask(user_id=u.id,panel_id=a.panel_id,action='modify',payload={'username':a.remote_username,'status':u.status,'data_limit':u.data_limit,'expire':int(u.expire.timestamp()) if u.expire else 0}))
  u.sub_token_version += 1
  db.add(AuditLog(actor_admin_id=admin.id,action='user.update',object_type='user',object_id=str(u.id),details={'fields':list(body)})); db.commit(); return serialize_user(u,has_perm(admin,'users.view_sub'))
-@router.delete('/user/{username}')
+@router.delete('/user/{username}',response_model=OkOut,summary='حذف کاربر',responses=errs(401,403,404))
 def delete_user(username:str,admin:Admin=Depends(require_perm('users.delete')),db:Session=Depends(get_db)):
  u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()
  if not u: raise HTTPException(404,detail={'detail':'کاربر پیدا نشد','code':'USER_NOT_FOUND'})
@@ -153,7 +156,7 @@ def delete_user(username:str,admin:Admin=Depends(require_perm('users.delete')),d
  for a in accounts: db.add(SyncTask(user_id=None,panel_id=a.panel_id,action='delete',payload={'username':a.remote_username,'admin_id':u.admin_id}))
  for a in accounts: db.delete(a)
  db.add(AuditLog(actor_admin_id=admin.id,action='user.delete',object_type='user',object_id=str(u.id),details={'username':u.username})); db.delete(u); db.commit(); return {'ok':True}
-@router.get('/user/{username}/sync-status')
+@router.get('/user/{username}/sync-status',response_model=SyncStatusOut,summary='وضعیت همگام‌سازی کاربر با پنل‌ها',responses=errs(401,403,404))
 def user_sync_status(username:str,admin:Admin=Depends(require_perm('users.view')),db:Session=Depends(get_db)):
  """Why does this user have no configs? Per-panel sync state plus the last task error."""
  u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()
@@ -164,26 +167,26 @@ def user_sync_status(username:str,admin:Admin=Depends(require_perm('users.view')
   out.append({'panel':p.name if p else a.panel_id,'panel_status':p.status if p else None,'remote_username':a.remote_username,'sync_state':a.sync_state,
    'last_task':{'action':t.action,'state':t.state,'attempts':t.attempts,'error':t.last_error} if t else None})
  return {'username':u.username,'status':u.status,'accounts':out}
-@router.post('/user/{username}/reset')
+@router.post('/user/{username}/reset',response_model=OkOut,summary='ریست مصرف کاربر',responses=errs(401,403,404))
 def reset_user(username:str,admin:Admin=Depends(require_perm('users.reset')),db:Session=Depends(get_db)):
  u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()
  if not u: raise HTTPException(404,detail={'detail':'کاربر پیدا نشد','code':'USER_NOT_FOUND'})
  u.used_traffic=0
  for a in db.query(UserPanelAccount).filter_by(user_id=u.id).all(): db.add(SyncTask(user_id=u.id,panel_id=a.panel_id,action='reset_usage',payload={'username':a.remote_username}))
  db.add(AuditLog(actor_admin_id=admin.id,action='user.reset_usage',object_type='user',object_id=str(u.id),details={})); db.commit(); return {'ok':True}
-@router.post('/user/{username}/revoke_sub')
+@router.post('/user/{username}/revoke_sub',response_model=OkOut,summary='ابطال و ساخت مجدد لینک اشتراک',responses=errs(401,403,404))
 def revoke_sub(username:str,admin:Admin=Depends(require_perm('users.revoke_sub')),db:Session=Depends(get_db)):
  u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()
  if not u: raise HTTPException(404,detail={'detail':'کاربر پیدا نشد','code':'USER_NOT_FOUND'})
  u.sub_token_version+=1; u.sub_revoked_at=datetime.now(timezone.utc)
  db.add(AuditLog(actor_admin_id=admin.id,action='user.revoke_sub',object_type='user',object_id=str(u.id),details={})); db.commit(); return {'ok':True}
-@router.get('/user/{username}/usage')
+@router.get('/user/{username}/usage',response_model=UserUsageOut,summary='تاریخچه مصرف کاربر (۱۰۰ مورد آخر)',responses=errs(401,403,404))
 def user_usage(username:str,admin:Admin=Depends(require_perm('users.usage_logs')),db:Session=Depends(get_db)):
  u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()
  if not u: raise HTTPException(404,detail={'detail':'کاربر پیدا نشد','code':'USER_NOT_FOUND'})
  logs=db.query(UsageLog).filter_by(user_id=u.id).order_by(UsageLog.id.desc()).limit(100).all()
  return {'used_traffic':u.used_traffic,'data_limit':u.data_limit,'logs':[{'delta':x.delta,'total_after':x.total_after,'recorded_at':x.recorded_at} for x in logs]}
-@router.post('/user/{username}/active-next')
+@router.post('/user/{username}/active-next',response_model=UserOut,summary='فعال‌سازی پلن بعدی',responses=errs(401,403,404,409))
 def activate_next(username:str,admin:Admin=Depends(require_perm('users.next_plan')),db:Session=Depends(get_db)):
  u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()
  if not u: raise HTTPException(404,detail={'detail':'کاربر پیدا نشد','code':'USER_NOT_FOUND'})

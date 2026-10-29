@@ -10,9 +10,10 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core import totp
 from app.core.crypto import decrypt_secret, encrypt_secret
-from app.core.security import hash_password, verify_password, create_access_token, current_admin
+from app.core.security import hash_password, verify_password, create_access_token, current_admin, session_admin
 from app.db.models import Admin, AuditLog, Service, User
 from app.db.session import get_db
+from app.schemas import AccountOut, OkOut, TokenOut, WhoAmIOut, errs
 
 router = APIRouter(prefix="/api/admin", tags=["auth"])
 _login_attempts: dict[str, list[float]] = {}
@@ -55,7 +56,9 @@ def _check_second_factor(admin: Admin, code: str, db: Session) -> bool:
     return False
 
 
-@router.post("/token")
+@router.post("/token", response_model=TokenOut, response_model_exclude_unset=True, summary="ورود و دریافت توکن",
+             description="با 2FA فعال و بدون otp، پاسخ `{two_factor_required: true}` است؛ همان درخواست را با otp تکرار کنید. بعد از ۵ تلاش ناموفق ۱۵ دقیقه قفل می‌شود (429).",
+             responses=errs(401, 429))
 def login(body: LoginInput, request: Request, db: Session = Depends(get_db)):
     limited = settings.login_rate_limit_enabled
     ip = request.client.host if request.client else "unknown"
@@ -86,14 +89,14 @@ def login(body: LoginInput, request: Request, db: Session = Depends(get_db)):
     return {"access_token": create_access_token(admin), "token_type": "bearer"}
 
 
-@router.get("")
+@router.get("", response_model=WhoAmIOut, summary="اطلاعات ادمین جاری", responses=errs(401))
 def whoami(admin: Admin = Depends(current_admin)):
     return {"id": admin.id, "username": admin.username, "role": admin.role, "permissions": admin.permissions,
             "totp_enabled": bool(admin.totp_enabled)}
 
 
-@router.post("/password")
-def change_password(body: PasswordInput, admin: Admin = Depends(current_admin), db: Session = Depends(get_db)):
+@router.post("/password", response_model=OkOut, summary="تغییر رمز (فقط با ورود عادی)", responses=errs(401, 403))
+def change_password(body: PasswordInput, admin: Admin = Depends(session_admin), db: Session = Depends(get_db)):
     if not verify_password(body.current_password, admin.password_hash):
         raise HTTPException(400, detail={"detail": "رمز فعلی نادرست است", "code": "BAD_PASSWORD"})
     admin.password_hash = hash_password(body.new_password)
@@ -103,7 +106,7 @@ def change_password(body: PasswordInput, admin: Admin = Depends(current_admin), 
 
 
 # ----------------------------------------------------------------------------- my account
-@router.get("/account")
+@router.get("/account", response_model=AccountOut, summary="خلاصه سهمیه و مصرف ادمین جاری", responses=errs(401))
 def my_account(admin: Admin = Depends(current_admin), db: Session = Depends(get_db)):
     """Quota/usage summary of the signed-in admin (their own users only)."""
     mine = db.query(User).filter(User.admin_id == admin.id)
@@ -184,7 +187,7 @@ class TwoFADisableInput(BaseModel):
 
 
 @router.post("/2fa/setup")
-def twofa_setup(body: TwoFASetupInput, admin: Admin = Depends(current_admin), db: Session = Depends(get_db)):
+def twofa_setup(body: TwoFASetupInput, admin: Admin = Depends(session_admin), db: Session = Depends(get_db)):
     """Step 1: create a pending secret. 2FA stays OFF until /2fa/enable proves the app works."""
     if admin.totp_enabled:
         raise _err(409, "احراز هویت دو مرحله‌ای از قبل فعال است", "TOTP_ALREADY_ENABLED")
@@ -201,7 +204,7 @@ def twofa_setup(body: TwoFASetupInput, admin: Admin = Depends(current_admin), db
 
 
 @router.post("/2fa/enable")
-def twofa_enable(body: TwoFAEnableInput, admin: Admin = Depends(current_admin), db: Session = Depends(get_db)):
+def twofa_enable(body: TwoFAEnableInput, admin: Admin = Depends(session_admin), db: Session = Depends(get_db)):
     """Step 2: confirm with a code from the app. Returns one-time recovery codes."""
     if admin.totp_enabled:
         raise _err(409, "احراز هویت دو مرحله‌ای از قبل فعال است", "TOTP_ALREADY_ENABLED")
@@ -225,7 +228,7 @@ def twofa_enable(body: TwoFAEnableInput, admin: Admin = Depends(current_admin), 
 
 
 @router.post("/2fa/disable")
-def twofa_disable(body: TwoFADisableInput, admin: Admin = Depends(current_admin), db: Session = Depends(get_db)):
+def twofa_disable(body: TwoFADisableInput, admin: Admin = Depends(session_admin), db: Session = Depends(get_db)):
     if not admin.totp_enabled:
         raise _err(409, "احراز هویت دو مرحله‌ای فعال نیست", "TOTP_NOT_ENABLED")
     if not verify_password(body.password, admin.password_hash):

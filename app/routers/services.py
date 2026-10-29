@@ -4,11 +4,12 @@ from sqlalchemy.orm import Session
 from app.core.security import current_admin, require_sudo
 from app.db.models import Admin, Service, ServiceItem, Panel, AuditLog, InboundAlias, PanelInbound
 from app.db.session import get_db
+from app.schemas import ServiceOut, errs
 router=APIRouter(prefix='/api/services',tags=['services'])
 class ServiceIn(BaseModel):
  name:str=Field(min_length=1,max_length=120); display_name:str=Field(min_length=1,max_length=120); description:str=''; enabled:bool=True; sort_order:int=0; sub_remark_template:str='{service} | {server}'
 class ItemIn(BaseModel): panel_id:int; selected_items:list=[]; priority:int=0; enabled:bool=True
-@router.get('')
+@router.get('',response_model=list[ServiceOut],response_model_exclude_unset=True,summary='لیست سرویس‌ها',description='نماینده فقط سرویس‌های فعالِ مجاز خودش را می‌بیند. برای ساخت کاربر از id سرویس استفاده کنید.',responses=errs(401))
 def list_services(admin:Admin=Depends(current_admin),db:Session=Depends(get_db)):
  q=db.query(Service)
  if admin.role!='sudo': q=q.filter(Service.id.in_(admin.allowed_services or []),Service.enabled.is_(True))

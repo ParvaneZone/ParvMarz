@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     credentials_encryption_key: str = ""
     public_base_url: str = "http://localhost:8000"
     cors_origins: str = "http://localhost:5173"
-    openapi_enabled: bool = True
+    openapi_enabled: bool = False
     panel_allow_private_addresses: bool = True
     sync_interval_seconds: int = 60
     log_level: str = "INFO"

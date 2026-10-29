@@ -5,10 +5,11 @@ from app.core.security import current_admin, require_sudo
 from app.core.permissions import has_perm
 from app.db.models import Admin, UserTemplate, Service
 from app.db.session import get_db
+from app.schemas import TemplateOut, errs
 router=APIRouter(prefix='/api/templates',tags=['templates'])
 class TemplateIn(BaseModel):
  name:str=Field(min_length=1,max_length=120); service_id:int; data_limit:int|None=None; duration:int|None=30; username_prefix:str=''; username_suffix:str=''; reset_strategy:str='no_reset'; add_remaining_traffic:bool=False
-@router.get('')
+@router.get('',response_model=list[TemplateOut],summary='لیست قالب‌های کاربر',description='نیازمند دسترسی templates.view.',responses=errs(401,403))
 def list_templates(admin:Admin=Depends(current_admin),db:Session=Depends(get_db)):
  if not has_perm(admin,'templates.view'): raise HTTPException(403,detail={'detail':'این دسترسی برای شما فعال نیست','code':'PERMISSION_DENIED'})
  q=db.query(UserTemplate)

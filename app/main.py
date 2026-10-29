@@ -8,7 +8,7 @@ from app.config import settings
 from app.db.session import Base, engine, SessionLocal
 from app.db.models import Admin
 from app.core.security import hash_password
-from app.routers import auth, panels, system, subscription, admins, services, users, templates, bulk, inbounds, usage, ops
+from app.routers import auth, panels, system, subscription, admins, services, users, templates, bulk, inbounds, usage, ops, api_keys, docs_api
 from app.jobs.scheduler import start_scheduler, stop_scheduler
 
 @asynccontextmanager
@@ -29,6 +29,7 @@ async def lifespan(_: FastAPI):
         stop_scheduler()
 
 app = FastAPI(title=settings.app_name, docs_url="/docs" if settings.openapi_enabled else None,
+              openapi_url="/openapi.json" if settings.openapi_enabled else None,
               redoc_url="/redoc" if settings.openapi_enabled else None, lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list,
                    allow_credentials=True, allow_methods=["GET","POST","PUT","PATCH","DELETE"],
@@ -45,6 +46,8 @@ app.include_router(bulk.router)
 app.include_router(inbounds.router)
 app.include_router(usage.router)
 app.include_router(ops.router)
+app.include_router(api_keys.router)
+app.include_router(docs_api.router)
 
 @app.middleware("http")
 async def security_headers(request, call_next):
