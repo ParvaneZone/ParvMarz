@@ -16,7 +16,21 @@ from app.db.session import get_db
 from app.schemas import AccountOut, OkOut, TokenOut, WhoAmIOut, errs
 
 router = APIRouter(prefix="/api/admin", tags=["auth"])
-_login_attempts: dict[str, list[float]] = {}
+
+def _lock_get(db, key):
+    from app.db.models import Setting
+    row = db.get(Setting, "login:" + key)
+    return list(row.value.get("t", [])) if row and isinstance(row.value, dict) else []
+
+
+def _lock_set(db, key, attempts):
+    from app.db.models import Setting
+    row = db.get(Setting, "login:" + key)
+    if not attempts:
+        if row: db.delete(row)
+    elif row: row.value = {"t": attempts}
+    else: db.add(Setting(key="login:" + key, value={"t": attempts}))
+    db.commit()
 
 
 class LoginInput(BaseModel):
@@ -64,16 +78,14 @@ def login(body: LoginInput, request: Request, db: Session = Depends(get_db)):
     ip = request.client.host if request.client else "unknown"
     key = f"{ip}:{body.username.lower()}"
     now = time.time()
-    attempts = [t for t in _login_attempts.get(key, []) if now - t < settings.login_lock_seconds] if limited else []
-    if limited:
-        _login_attempts[key] = attempts
+    attempts = [t for t in _lock_get(db, key) if now - t < settings.login_lock_seconds] if limited else []
     if limited and len(attempts) >= settings.login_max_attempts:
         raise HTTPException(429, detail={"detail": "تلاش‌های ورود زیاد است؛ ۱۵ دقیقه بعد دوباره تلاش کنید", "code": "LOGIN_LOCKED"})
 
     def fail(detail: str, code: str):
         if limited:
             attempts.append(now)
-            _login_attempts[key] = attempts
+            _lock_set(db, key, attempts)
         raise _err(401, detail, code)
 
     admin = db.query(Admin).filter(func.lower(Admin.username) == body.username.lower()).first()
@@ -85,7 +97,7 @@ def login(body: LoginInput, request: Request, db: Session = Depends(get_db)):
             return {"two_factor_required": True}
         if not _check_second_factor(admin, otp, db):
             fail("کد دو مرحله‌ای نادرست است", "BAD_OTP")
-    _login_attempts.pop(key, None)
+    if limited and attempts: _lock_set(db, key, [])
     return {"access_token": create_access_token(admin), "token_type": "bearer"}
 
 

@@ -13,7 +13,7 @@ function useRun({ api, t, toast }: Ctx, keys: string[]) {
   const qc = useQueryClient();
   return async (path: string, init: RequestInit, after?: () => void) => {
     try { const r = await api(path, init); await Promise.all(keys.map(k => qc.invalidateQueries({ queryKey: [k] }))); toast({ title: t("انجام شد", "Done"), status: "success" }); after?.(); return r; }
-    catch (e) { toast({ title: msg(e), status: "error" }); }
+    catch (e) { toast({ title: t("خطا", "Error"), description: msg(e), status: "error", duration: 15000, isClosable: true }); }
   };
 }
 const F = ({ label, children }: { label: string; children: React.ReactNode }) => <FormControl><FormLabel>{label}</FormLabel>{children}</FormControl>;
@@ -26,15 +26,16 @@ export function PanelsTab(c: Ctx) {
   const empty = { name: "", type: "marzban", base_url: "", username: "", password: "", verify_ssl: true, enabled: true, username_prefix: "", sync_interval: 60 };
   const [f, setF] = React.useState<any>(null); const [editId, setEditId] = React.useState<number | null>(null);
   const qc = useQueryClient();
-  const [inb, setInb] = React.useState<{ panel: any; rows: any[]; busy: boolean; error: string } | null>(null);
+  const [inb, setInb] = React.useState<{ panel: any; rows: any[]; busy: boolean; error: string; note?: string } | null>(null);
   const set = (k: string, v: any) => setF({ ...f, [k]: v });
   /** Pull the panel's real inbounds (never services/groups) and refresh the cache the UI reads from. */
   const pullInbounds = async (p: any, force: boolean) => {
     setInb({ panel: p, rows: [], busy: true, error: "" });
     try {
       let rows = force ? [] : await api(`/api/panels/${p.id}/inbounds`).catch(() => []);
-      if (!rows.length) { await api(`/api/panels/${p.id}/sync`, J("POST")); rows = await api(`/api/panels/${p.id}/inbounds`); }
-      setInb({ panel: p, rows, busy: false, error: "" });
+      let note = "";
+      if (!rows.length || force) { const r = await api(`/api/panels/${p.id}/sync`, J("POST")); note = r?.hosts_error ? t("هاست‌ها: ", "Hosts: ") + r.hosts_error : ""; rows = await api(`/api/panels/${p.id}/inbounds`); }
+      setInb({ panel: p, rows, busy: false, error: "", note });
     } catch (e) { setInb({ panel: p, rows: [], busy: false, error: msg(e) }); }
     await Promise.all(["panels", "inbounds"].map(k => qc.invalidateQueries({ queryKey: [k] })));
   };
@@ -70,8 +71,9 @@ export function PanelsTab(c: Ctx) {
       <HStack mb={3} justify="space-between"><Text fontSize="sm" className="muted">{t("فقط اینباندهای واقعی پنل (نه سرویس یا گروه).", "Real panel inbounds only (not services or groups).")}</Text>
         <Button size="xs" leftIcon={<Icon name="refresh" size={14} />} isLoading={inb?.busy} onClick={() => inb && void pullInbounds(inb.panel, true)}>{t("دریافت مجدد از پنل", "Fetch from panel")}</Button></HStack>
       {inb?.error && <Text color="red.400" fontSize="sm" mb={2}>{inb.error}</Text>}
+      {inb?.note && <Text color="orange.400" fontSize="sm" mb={2} className="ltr">{inb.note}</Text>}
       {inb && !inb.busy && !inb.error && inb.rows.length === 0 && <Text fontSize="sm" className="muted">{t("اینباندی پیدا نشد.", "No inbounds found.")}</Text>}
-      <Table size="sm"><Thead><Tr><Th>#</Th><Th>tag</Th><Th>protocol</Th><Th>network</Th><Th>security</Th></Tr></Thead><Tbody>{(inb?.rows || []).map((x: any, n: number) => <Tr key={x.id}><Td>{n + 1}</Td><Td className="ltr">{x.tag}</Td><Td>{x.protocol || "—"}</Td><Td>{x.network || "—"}</Td><Td>{x.security || "—"}</Td></Tr>)}</Tbody></Table></ModalBody></ModalContent></Modal>
+      <Table size="sm"><Thead><Tr><Th>#</Th><Th>{t("هاست", "Host")}</Th><Th>tag</Th><Th>protocol</Th><Th>network</Th><Th>security</Th></Tr></Thead><Tbody>{(inb?.rows || []).map((x: any, n: number) => <Tr key={x.id}><Td>{n + 1}</Td><Td>{(x.hosts || []).map((h: any) => h.remark).join("، ") || "—"}</Td><Td className="ltr">{x.tag}</Td><Td>{x.protocol || "—"}</Td><Td>{x.network || "—"}</Td><Td>{x.security || "—"}</Td></Tr>)}</Tbody></Table></ModalBody></ModalContent></Modal>
   </Box>;
 }
 
@@ -94,7 +96,7 @@ function ItemAdder({ c, service, done }: { c: Ctx; service: any; done: () => voi
       <F label={t("پنل", "Panel")}><Select placeholder="—" value={pid} onChange={e => setPid(e.target.value)}>{(panels.data || []).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></F>
       <F label={t("اولویت", "Priority")}><Input type="number" value={prio} onChange={e => setPrio(e.target.value)} /></F></SimpleGrid>
     {pid && <Box mt={2}><HStack mb={1} spacing={2}><Text fontSize="sm">{t("اینباندهای پنل (خالی = همه)", "Panel inbounds (empty = all)")}</Text>{busy && <Text fontSize="xs" className="muted">{t("در حال دریافت از پنل…", "Fetching from panel…")}</Text>}
-      {inb.length > 0 && <><Button size="xs" variant="outline" onClick={() => setSel(inb.filter(x => x.kind !== "group").map(x => String(x.tag ?? x.remote_id ?? x.id)))}>{t("همه", "All")}</Button><Button size="xs" variant="outline" onClick={() => setSel([])}>{t("هیچ‌کدام", "None")}</Button></>}</HStack><HStack flexWrap="wrap" spacing={3}>{inb.filter(x => x.kind !== "group").map(x => { const k = String(x.tag ?? x.remote_id ?? x.id); return <Checkbox key={x.id} isChecked={sel.includes(k)} onChange={e => setSel(e.target.checked ? [...sel, k] : sel.filter(s => s !== k))}>{x.tag || x.remote_id}{x.protocol ? ` · ${x.protocol}` : ""}</Checkbox>; })}
+      {inb.length > 0 && <><Button size="xs" variant="outline" onClick={() => setSel(inb.filter(x => x.kind !== "group").map(x => String(x.tag ?? x.remote_id ?? x.id)))}>{t("همه", "All")}</Button><Button size="xs" variant="outline" onClick={() => setSel([])}>{t("هیچ‌کدام", "None")}</Button></>}</HStack><HStack flexWrap="wrap" spacing={3}>{inb.filter(x => x.kind !== "group").map(x => { const k = String(x.tag ?? x.remote_id ?? x.id); return <Checkbox key={x.id} isChecked={sel.includes(k)} onChange={e => setSel(e.target.checked ? [...sel, k] : sel.filter(s => s !== k))}>{(x.hosts || []).length ? <><b>{(x.hosts as any[]).map(h => h.remark).join("، ")}</b> <span className="muted ltr">· {x.tag}</span></> : (x.tag || x.remote_id)}{x.protocol ? ` · ${x.protocol}` : ""}</Checkbox>; })}
       {!busy && inb.length === 0 && <Text fontSize="sm" className={err ? undefined : "muted"} color={err ? "red.400" : undefined}>{err || t("اینباندی پیدا نشد؛ اتصال پنل را در تب پنل‌ها تست کنید.", "No inbounds found; test the panel connection in the Panels tab.")}</Text>}</HStack></Box>}
     <Button mt={3} size="sm" colorScheme="blue" isDisabled={!pid} onClick={() => run(`/api/services/${service.id}/items`, J("POST", { panel_id: Number(pid), selected_items: sel, priority: Number(prio) }), done)}>{t("افزودن پنل به سرویس", "Attach panel")}</Button>
   </Box>;
@@ -179,9 +181,19 @@ export function AdminsTab(c: Ctx) {
   const allSv: number[] = (sv.data || []).map((s: any) => s.id);
   const toggle = (arr: any[], v: any, on: boolean) => (on ? [...arr, v] : arr.filter(x => x !== v));
   const limits = () => ({ max_users: num(f.max_users), max_total_traffic: fromGB(f.max_total_gb), max_user_traffic: fromGB(f.max_user_gb), max_user_days: num(f.max_user_days), expire: f.expire ? new Date(f.expire + "T23:59:59").toISOString() : null, allowed_services: f.services, permissions: Object.fromEntries(allKeys.map(k => [k, !!f.perms[k]])) });
-  const save = () => editId
+  const check = (): string => {
+    if (editId) return "";
+    if (!/^[A-Za-z0-9_.-]{3,80}$/.test(f.username)) return t("نام کاربری: حداقل ۳ کاراکتر و فقط حروف انگلیسی/عدد/_ . -", "Username: min 3 chars, letters/digits/_ . - only");
+    if ((f.password || "").length < 12) return t(`رمز: حداقل ۱۲ کاراکتر (الان ${(f.password || "").length})`, `Password: min 12 chars (now ${(f.password || "").length})`);
+    for (const [k, l] of [["max_users", t("حداکثر کاربر", "Max users")], ["max_total_gb", t("سقف کل حجم", "Total cap")], ["max_user_gb", t("سقف حجم کاربر", "Per-user cap")], ["max_user_days", t("سقف روز", "Max days")]]) if (f[k] !== "" && !(Number(f[k]) >= 0)) return `${l}: ${t("عدد نامعتبر", "invalid number")}`;
+    return "";
+  };
+  const save = () => { const bad = check(); if (bad) { c.toast({ title: bad, status: "warning" }); return; } doSave(); };
+  const doSave = () => editId
     ? run(`/api/admins/${editId}`, J("PATCH", limits()), () => { setF(null); setEditId(null); })
-    : run("/api/admins", J("POST", { username: f.username, password: f.password, role: f.role, ...limits() }), () => setF(null));
+    : run("/api/admins", J("POST", { username: f.username, password: f.password, role: f.role, ...limits() }), () => setF(null)).then((r: any) => {
+        if (r?.warnings?.length) c.toast({ title: t("ادمین ساخته شد، ولی:", "Admin created, but:"), description: r.warnings.join("\n"), status: "warning", duration: 12000, isClosable: true });
+      });
   const edit = (a: any) => { setEditId(a.id); setF({ ...empty, username: a.username, role: a.role, max_users: a.max_users ?? "", max_total_gb: toGB(a.max_total_traffic), max_user_gb: toGB(a.max_user_traffic), max_user_days: a.max_user_days ?? "", expire: a.expire ? a.expire.slice(0, 10) : "", services: a.allowed_services || [], perms: Object.keys(a.permissions || {}).length ? a.permissions : Object.fromEntries(allKeys.map(k => [k, true])) }); };
   const isAdmin = f?.role === "admin";
   return <Box className="panel">
@@ -300,6 +312,23 @@ export function BulkBar({ c, ids, clear }: { c: Ctx; ids: number[]; clear: () =>
 }
 
 /* ---------------- Inbound names ---------------- */
+function ConfigNames({ c }: { c: Ctx }) {
+  const { api, t } = c; const run = useRun(c, ["cfgs"]);
+  const q = useQuery({ queryKey: ["cfgs"], queryFn: () => api("/api/inbounds/configs"), staleTime: 60000 });
+  const [v, setV] = React.useState<Record<string, string>>({}); const key = (x: any) => `${x.panel_id}|${x.name}`;
+  return <Box>
+    <HStack justify="space-between" mb={1}><Heading size="sm">{t("نام کانفیگ‌ها (همان چیزی که در برنامه دیده می‌شود)", "Config names (as shown in the client app)")}</Heading>
+      <Button size="xs" isLoading={q.isFetching} onClick={() => void q.refetch()}>{t("دریافت مجدد", "Reload")}</Button></HStack>
+    <Text fontSize="sm" className="muted" mb={3}>{t("نام جدید را بنویسید و ذخیره کنید؛ خالی = نام اصلی. روی همه‌ی اشتراک‌ها اعمال می‌شود.", "Type a new name and save; empty = original. Applies to every subscription.")}</Text>
+    {q.isLoading && <Text className="muted">{t("در حال دریافت از پنل‌ها…", "Fetching from panels…")}</Text>}
+    {(q.data?.notes || []).map((n: string, i: number) => <Text key={i} color="orange.400" fontSize="sm" className="ltr">{n}</Text>)}
+    <Box className="tscroll"><Table size="sm"><Thead><Tr><Th>{t("پنل", "Panel")}</Th><Th>{t("نام اصلی", "Original")}</Th><Th>{t("آدرس", "Address")}</Th><Th>{t("نام جدید", "New name")}</Th><Th /></Tr></Thead>
+      <Tbody>{(q.data?.items || []).map((x: any) => <Tr key={key(x)}><Td>{x.panel_name}</Td><Td fontWeight={700}>{x.name}</Td><Td className="ltr muted">{x.server}:{x.port} · {[x.type, x.network].filter(Boolean).join("/")}</Td>
+        <Td><Input size="sm" value={v[key(x)] ?? x.display_name} onChange={e => setV({ ...v, [key(x)]: e.target.value })} /></Td>
+        <Td><Button size="xs" colorScheme="blue" onClick={() => run("/api/inbounds/config", J("PUT", { panel_id: x.panel_id, name: x.name, display_name: v[key(x)] ?? x.display_name }))}>{t("ذخیره", "Save")}</Button></Td></Tr>)}</Tbody></Table></Box>
+  </Box>;
+}
+
 export function InboundsTab(c: Ctx) {
   const { api, t } = c; const run = useRun(c, ["inbounds"]);
   const q = useQuery({ queryKey: ["inbounds"], queryFn: () => api("/api/inbounds") });
@@ -307,10 +336,12 @@ export function InboundsTab(c: Ctx) {
   const key = (x: any) => `${x.panel_id}|${x.tag}`;
   return <Box className="panel">
     <Heading size="md" mb={1}>{t("نام اینباندها", "Inbound names")}</Heading>
-    <Text fontSize="sm" className="muted" mb={4}>{t("این نام به‌جای نام اصلی برای کاربران و ادمین‌ها نمایش داده می‌شود. خالی = نام اصلی. ابتدا پنل را همگام‌سازی کنید.", "Shown to users and admins instead of the original name. Empty = original. Sync the panel first.")}</Text>
-    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("پنل", "Panel")}</Th><Th>{t("نام اصلی", "Original")}</Th><Th>{t("نوع", "Type")}</Th><Th>{t("نام نمایشی", "Display name")}</Th><Th /></Tr></Thead>
-      <Tbody>{(q.data || []).map((x: any) => <Tr key={key(x)}><Td>{x.panel_name}</Td><Td className="ltr">{x.tag}</Td><Td className="ltr">{[x.protocol, x.network, x.security].filter(Boolean).join(" / ")}</Td>
-        <Td><Input size="sm" value={v[key(x)] ?? x.display_name} onChange={e => setV({ ...v, [key(x)]: e.target.value })} /></Td>
+    <Text fontSize="sm" className="muted" mb={4}>{t("نام هاست کنار هر اینباند نمایش داده می‌شود و مبنای تغییر نام و ساخت سرویس است. نام نمایشی به‌جای آن برای کاربران و ادمین‌ها دیده می‌شود؛ خالی = نام هاست. بعد از افزودن هاست، پنل را دوباره همگام‌سازی کنید.", "The host name is shown beside each inbound and is the base for renaming and building services. The display name replaces it for users and admins; empty = host name. Re-sync the panel after adding hosts.")}</Text>
+    <ConfigNames c={c} />
+    <Heading size="sm" mt={8} mb={3}>{t("اینباندها", "Inbounds")}</Heading>
+    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("پنل", "Panel")}</Th><Th>{t("هاست", "Host")}</Th><Th>{t("اینباند", "Inbound")}</Th><Th>{t("نوع", "Type")}</Th><Th>{t("نام نمایشی", "Display name")}</Th><Th /></Tr></Thead>
+      <Tbody>{(q.data || []).map((x: any) => <Tr key={key(x)}><Td>{x.panel_name}</Td><Td>{(x.hosts || []).length ? (x.hosts as any[]).map((h, i) => <Box key={i}><Text fontWeight={700}>{h.remark}</Text>{h.address && <Text className="muted ltr" fontSize="xs">{h.address}</Text>}</Box>) : <Text className="muted">—</Text>}</Td><Td className="ltr muted">{x.tag}</Td><Td className="ltr">{[x.protocol, x.network, x.security].filter(Boolean).join(" / ")}</Td>
+        <Td><Input size="sm" placeholder={(x.hosts || [])[0]?.remark || x.tag} value={v[key(x)] ?? x.display_name} onChange={e => setV({ ...v, [key(x)]: e.target.value })} /></Td>
         <Td><Button size="xs" colorScheme="blue" onClick={() => run("/api/inbounds", J("PUT", { panel_id: x.panel_id, tag: x.tag, display_name: v[key(x)] ?? x.display_name }))}>{t("ذخیره", "Save")}</Button></Td></Tr>)}</Tbody></Table></Box>
   </Box>;
 }

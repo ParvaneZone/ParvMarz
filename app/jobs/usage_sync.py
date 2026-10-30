@@ -1,10 +1,12 @@
 from datetime import datetime, timezone, timedelta
-import asyncio
-from app.core.crypto import decrypt_secret
 from app.db.models import Panel, User, UserPanelAccount, UsageLog, SyncTask
 from app.core.panel_access import get_panel_credentials
 from app.db.session import SessionLocal
 from app.drivers.factory import build_driver
+from app.core.errors import short_error
+from app.core.notify import notify_event
+import logging
+log=logging.getLogger('jinxdata.usage')
 
 def traffic_delta(current:int, previous:int)->int:
     current=max(0,int(current)); previous=max(0,int(previous))
@@ -36,7 +38,8 @@ async def sync_usage()->dict:
      credentials=get_panel_credentials(db,panel,admin_id)
     driver=build_driver(ptype,url,credentials,ssl)
     usages=await driver.get_usages([a[2] for a in owner_accounts])
-   except Exception:
+   except Exception as exc:
+    log.warning('usage sync failed (panel %s, admin %s): %s',pid,admin_id,short_error(exc))
     # An invalid scope/credential on one representative must not stop other panels or representatives.
     continue
    with SessionLocal() as db:
@@ -54,10 +57,10 @@ async def sync_usage()->dict:
      elif user.data_limit is not None and user.used_traffic>=user.data_limit: user.status='limited'; reason='traffic limit reached'
      elif user.expire and (user.expire.replace(tzinfo=timezone.utc) if user.expire.tzinfo is None else user.expire)<=datetime.now(timezone.utc): user.status='expired'; reason='expired'
      if reason:
-      user.sub_token_version+=1
+      notify_event('user.'+user.status,{'username':user.username,'reason':reason,'admin_id':user.admin_id})
       for other in db.query(UserPanelAccount).filter_by(user_id=uid).all(): db.add(SyncTask(user_id=uid,panel_id=other.panel_id,action='set_status',payload={'username':other.remote_username,'enabled':False}))
      if user.status=='on_hold' and (current>0 or user.online_at):
-      user.status='active'; user.expire=datetime.now(timezone.utc)+timedelta(seconds=user.on_hold_expire_duration or 2592000); user.sub_token_version+=1
+      user.status='active'; user.expire=datetime.now(timezone.utc)+timedelta(seconds=user.on_hold_expire_duration or 2592000)
       for other in db.query(UserPanelAccount).filter_by(user_id=uid).all(): db.add(SyncTask(user_id=uid,panel_id=other.panel_id,action='modify',payload={'username':other.remote_username,'status':'active','expire':int(user.expire.timestamp()),'data_limit':user.data_limit}))
      processed+=1
     db.commit()
