@@ -16,7 +16,8 @@ set_env() {
   case "$2" in *'$'*) printf "%s='%s'\n" "$1" "$2" >> .env.tmp;; *) printf '%s=%s\n' "$1" "$2" >> .env.tmp;; esac
   mv .env.tmp .env && chmod 600 .env
 }
-apply() { echo "Applying..."; dc up -d --build; }
+apply() { echo "Applying..."; dc up -d; }
+rebuild() { echo "Rebuilding..."; dc up -d --build; }
 ask() { local v; read -r -p "$1 [$2]: " v || true; printf '%s' "${v:-$2}"; }
 
 edit_env() {
@@ -150,7 +151,7 @@ while true; do
     9) reset_pw; pause;;
     10) creds; pause;;
     12) backup; pause;;
-    13) apply; pause;;
+    13) rebuild; pause;;
     14) uninstall; pause;;
     16) reset_2fa; pause;;
     15) echo "Panel: $(get_env PUBLIC_BASE_URL)/dashboard/  (port $(panel_port))"; [ -z "$(get_env SUB_PORT)" ] || echo "Sub:   $(get_env SUB_PUBLIC_BASE_URL)/sub/...  (port $(get_env SUB_PORT))"; pause;;
