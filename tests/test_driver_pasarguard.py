@@ -19,7 +19,7 @@ async def test_api_key_header_and_groups():
 async def test_create_uses_group_ids_and_iso_expire():
     route = respx.post(B + "/api/user").mock(return_value=httpx.Response(201, json={}))
     d = PasarGuardDriver(B, {"username": "", "password": "pg_key_abc"})
-    await d.create_user({"username": "u", "service_id": 2, "data_limit": 10, "expire": 1700000000})
+    await d.create_user({"username": "u", "group_ids": [2], "data_limit": 10, "expire": 1700000000})
     import json
     body = json.loads(route.calls[0].request.content)
     assert body["group_ids"] == [2] and body["expire"] == "2023-11-14T22:13:20Z"
