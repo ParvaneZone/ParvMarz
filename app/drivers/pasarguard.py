@@ -160,6 +160,9 @@ class PasarGuardDriver(PanelDriver):
                 pass
         return rows
 
+    async def list_hosts(self) -> list[dict[str, Any]]:
+        return await self._request("GET", "/api/hosts")
+
     async def list_groups(self) -> list[dict[str, Any]]:
         data = None
         for path in ("/api/groups/simple", "/api/groups"):

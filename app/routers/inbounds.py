@@ -18,10 +18,14 @@ class AliasIn(BaseModel):
 def list_inbounds(_: Admin = Depends(require_sudo), db: Session = Depends(get_db)):
     aliases = {(a.panel_id, a.tag): a.display_name for a in db.query(InboundAlias).all()}
     panels = {p.id: p.name for p in db.query(Panel).all()}
+    hosts: dict = {}
+    for h in db.query(PanelInbound).filter_by(kind="host").all():
+        hosts.setdefault((h.panel_id, h.tag), []).append({"remark": h.remark, "address": (h.extra or {}).get("address", "")})
     rows = db.query(PanelInbound).filter_by(kind="inbound").order_by(PanelInbound.panel_id, PanelInbound.id).all()
     return [{"panel_id": x.panel_id, "panel_name": panels.get(x.panel_id), "tag": x.tag, "protocol": x.protocol,
              "network": x.network, "security": x.security, "remark": x.remark,
-             "display_name": aliases.get((x.panel_id, x.tag), "")} for x in rows if x.tag]
+             "display_name": aliases.get((x.panel_id, x.tag), ""),
+             "hosts": hosts.get((x.panel_id, x.tag), [])} for x in rows if x.tag]
 
 
 @router.put("")
