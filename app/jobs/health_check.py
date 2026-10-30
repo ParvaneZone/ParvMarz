@@ -4,7 +4,6 @@ from app.db.models import Panel
 from app.db.session import SessionLocal
 from app.drivers.factory import build_driver
 import asyncio
-from app.core.notify import notify_event
 
 async def check_panels()->dict:
  with SessionLocal() as db:
@@ -19,8 +18,6 @@ async def check_panels()->dict:
   with SessionLocal() as db:
    p=db.get(Panel,pid)
    if p:
-    prev=p.status
-    if prev!=('healthy' if ok else 'down') and prev in ('healthy','down'): notify_event('panel.up' if ok else 'panel.down',{'panel':p.name,'error':err or ''})
     p.status='healthy' if ok else 'down'; p.last_error=err
     if ok: p.last_ok_at=datetime.now(timezone.utc)
     db.commit()

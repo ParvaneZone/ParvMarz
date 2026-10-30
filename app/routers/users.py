@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, StringConstraints
 from typing import Annotated
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from app.core.security import require_sudo, require_perm
+from app.core.security import current_admin, require_sudo, require_perm
 from app.core.subtokens import issue_subscription_token
 from app.db.models import Admin, User, Service, ServiceItem, Panel, PanelInbound, UserPanelAccount, SyncTask, AuditLog, UsageLog
 from app.db.session import get_db
@@ -25,17 +25,12 @@ def user_scope(db,admin):
  if admin.role!='sudo': q=q.filter(User.admin_id==admin.id)
  return q
 @router.get('/users',response_model=UserListOut,summary='لیست کاربران',description='نماینده فقط کاربران خودش را می‌بیند. limit حداکثر ۲۰۰. نیازمند دسترسی users.view.',responses=errs(401,403))
-def list_users(q:str|None=None,status:str|None=None,admin_id:int|None=None,service_id:int|None=None,expiring_in_days:int|None=Query(None,ge=0,le=3650),near_limit_percent:int|None=Query(None,ge=1,le=100),sort:str=Query('-id',pattern='^-?(id|username|used_traffic|expire|created_at)$'),limit:int=Query(50,ge=1,le=200),offset:int=Query(0,ge=0),admin:Admin=Depends(require_perm('users.view')),db:Session=Depends(get_db)):
+def list_users(q:str|None=None,status:str|None=None,admin_id:int|None=None,limit:int=Query(50,ge=1,le=200),offset:int=Query(0,ge=0),admin:Admin=Depends(require_perm('users.view')),db:Session=Depends(get_db)):
  query=user_scope(db,admin)
  if q: query=query.filter(User.username.ilike(f'%{q}%'))
  if status: query=query.filter(User.status==status)
  if admin.role=='sudo' and admin_id is not None: query=query.filter(User.admin_id==admin_id)
- if service_id is not None: query=query.filter(User.service_id==service_id)
- if expiring_in_days is not None:
-  now=datetime.now(timezone.utc); query=query.filter(User.expire.is_not(None),User.expire>now,User.expire<=now+timedelta(days=expiring_in_days))
- if near_limit_percent is not None: query=query.filter(User.data_limit.is_not(None),User.data_limit>0,User.used_traffic*100>=User.data_limit*near_limit_percent)
- col=getattr(User,sort.lstrip('-')); order=col.desc() if sort.startswith('-') else col.asc()
- total=query.count(); rows=query.order_by(order,User.id.desc()).offset(offset).limit(limit).all()
+ total=query.count(); rows=query.order_by(User.id.desc()).offset(offset).limit(limit).all()
  show=has_perm(admin,'users.view_sub')
  return {'total':total,'items':[serialize_user(u,show) for u in rows]}
 def serialize_user(u,show_sub=True):
@@ -44,8 +39,7 @@ def serialize_user(u,show_sub=True):
 @router.post('/user',response_model=UserOut,summary='ساخت کاربر',description='حجم به بایت است. سرویس باید در allowed_services نماینده باشد و سهمیه‌ها (تعداد/حجم/مدت) بررسی می‌شود. ساخت روی پنل‌ها غیرهمزمان انجام می‌شود (sync-status را ببینید).',responses=errs(401,403,404,409))
 def create_user(body:UserIn,admin:Admin=Depends(require_perm('users.create')),db:Session=Depends(get_db)):
  allowed(admin,body.service_id)
- def deny():
-  return HTTPException(403,detail={'detail':'این دسترسی برای شما فعال نیست','code':'PERMISSION_DENIED'})
+ deny=lambda: HTTPException(403,detail={'detail':'این دسترسی برای شما فعال نیست','code':'PERMISSION_DENIED'})
  if body.note and not has_perm(admin,'users.create_note'): raise deny()
  if body.data_limit_reset_strategy!='no_reset' and not has_perm(admin,'users.create_reset_strategy'): raise deny()
  if body.expire and not has_perm(admin,'users.create_expire_date'): raise deny()
@@ -152,10 +146,7 @@ def update_user(username:str,body:UserUpdate,admin:Admin=Depends(require_perm('u
   setattr(u,k,v)
  if 'status' in body or 'data_limit' in body or 'expire' in body:
   for a in db.query(UserPanelAccount).filter_by(user_id=u.id).all(): db.add(SyncTask(user_id=u.id,panel_id=a.panel_id,action='modify',payload={'username':a.remote_username,'status':u.status,'data_limit':u.data_limit,'expire':int(u.expire.timestamp()) if u.expire else 0}))
- if 'data_limit_reset_strategy' in body:
-  from app.db.models import Setting
-  s=db.get(Setting,f'user_reset:{u.id}')
-  if s: db.delete(s)
+ u.sub_token_version += 1
  db.add(AuditLog(actor_admin_id=admin.id,action='user.update',object_type='user',object_id=str(u.id),details={'fields':list(body)})); db.commit(); return serialize_user(u,has_perm(admin,'users.view_sub'))
 @router.delete('/user/{username}',response_model=OkOut,summary='حذف کاربر',responses=errs(401,403,404))
 def delete_user(username:str,admin:Admin=Depends(require_perm('users.delete')),db:Session=Depends(get_db)):
@@ -203,7 +194,7 @@ def activate_next(username:str,admin:Admin=Depends(require_perm('users.next_plan
  plan=u.next_plan
  try: new_limit,new_expire,remaining_added=apply_next_plan(u.data_limit,u.used_traffic,plan)
  except (ValueError,TypeError): raise HTTPException(422,detail={'detail':'تعریف پلن بعدی نامعتبر است','code':'INVALID_NEXT_PLAN'})
- u.data_limit=new_limit; u.used_traffic=0; u.expire=new_expire; u.status='active'; u.next_plan=None
+ u.data_limit=new_limit; u.used_traffic=0; u.expire=new_expire; u.status='active'; u.next_plan=None; u.sub_token_version+=1
  for a in db.query(UserPanelAccount).filter_by(user_id=u.id).all(): db.add(SyncTask(user_id=u.id,panel_id=a.panel_id,action='modify',payload={'username':a.remote_username,'data_limit':u.data_limit,'expire':int(u.expire.timestamp()),'status':'active'}))
  db.add(AuditLog(actor_admin_id=admin.id,action='user.active_next',object_type='user',object_id=str(u.id),details={'remaining_added':remaining_added})); db.commit(); return serialize_user(u,has_perm(admin,'users.view_sub'))
 @router.post('/user/{username}/set-owner')

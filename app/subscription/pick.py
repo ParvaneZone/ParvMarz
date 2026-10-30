@@ -1,5 +1,4 @@
-import random
-import time
+import random, time
 
 
 def pick_links(parsed: list[dict], mode: str, interval_min: int, count: int, seed: int = 0) -> list[dict]:

@@ -1,8 +1,5 @@
 """Standalone (must not import app.*, settings are invalid before this runs)."""
-import base64
-import json
-import os
-import secrets
+import base64, json, os, secrets
 from pathlib import Path
 def main():
     """Print `export` lines with auto-generated secrets (used by the Docker entrypoint)."""

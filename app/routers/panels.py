@@ -162,19 +162,6 @@ async def sync_panel(panel_id: int, _: Admin = Depends(require_sudo), db: Sessio
                 groups = await driver.list_groups()
             except Exception:  # hidden helper data; inbound sync must still succeed
                 groups = []
-        hosts: list = []; hosts_error = ''
-        try:  # best effort: host names/addresses shown beside each inbound
-            from app.drivers.base import normalize_hosts
-            raw = await driver.list_hosts()
-            id_to_tag = {str(i['id']): (i.get('tag') or i.get('remark') or i.get('name')) for i in inbounds if i.get('id') is not None}
-            hosts = normalize_hosts(raw, id_to_tag)
-            if not hosts:
-                first = next(iter(raw.values()), None) if isinstance(raw, dict) else (raw[0] if isinstance(raw, list) and raw else None)
-                if isinstance(first, list) and first: first = first[0]
-                hosts_error = ('هاستی از پنل برنگشت' if first is None else
-                               'هاست‌ها دریافت شد ولی به اینباندی وصل نبودند؛ فیلدها: ' + ', '.join(sorted(first)) if isinstance(first, dict) else 'پاسخ هاست‌ها ناشناخته است')
-        except Exception as exc:
-            hosts_error = _why(exc)
         db.query(PanelInbound).filter(PanelInbound.panel_id == panel.id).delete()
         now = datetime.now(timezone.utc)
         for item in inbounds:
@@ -185,8 +172,6 @@ async def sync_panel(panel_id: int, _: Admin = Depends(require_sudo), db: Sessio
                 remote_id=str(item.get('id')) if item.get('id') is not None else None,
                 tag=tag, protocol=item.get('protocol') if isinstance(item.get('protocol'), str) else None, network=item.get('network') if isinstance(item.get('network'), str) else None, security=item.get('security') if isinstance(item.get('security'), str) else None,
                 remark=item.get('remark') or tag, cached_at=now))
-        for h in hosts:
-            db.add(PanelInbound(panel_id=panel.id, kind='host', tag=h['tag'], remark=h['remark'], cached_at=now, extra={'address': h['address']}))
         for item in groups:
             name = item.get('name') or item.get('display_name') or item.get('remark')
             db.add(PanelInbound(panel_id=panel.id, kind='group',
@@ -194,7 +179,7 @@ async def sync_panel(panel_id: int, _: Admin = Depends(require_sudo), db: Sessio
                 tag=name, remark=name, cached_at=now, extra={'inbound_tags': tags_from_group(item)}))
         panel.status='healthy'; panel.last_error=None; panel.last_ok_at=now; db.commit()
         rows = [{'tag': i.get('tag') or i.get('remark') or i.get('name'), 'protocol': i.get('protocol'), 'network': i.get('network'), 'security': i.get('security')} for i in inbounds]
-        return {'synced': len(rows), 'groups_cached': len(groups), 'inbounds': rows, 'hosts': len(hosts), 'hosts_error': hosts_error}
+        return {'synced': len(rows), 'groups_cached': len(groups), 'inbounds': rows}
     except Exception as exc:
         panel.status='down'; panel.last_error=_why(exc); db.commit()
         raise HTTPException(502, detail={'detail': f'همگام‌سازی پنل ناموفق بود ({_why(exc)})', 'code': 'PANEL_SYNC_FAILED'}) from exc
@@ -205,10 +190,7 @@ def get_inbounds(panel_id: int, _: Admin = Depends(require_sudo), db: Session = 
     if not db.get(Panel, panel_id):
         raise HTTPException(404, detail={'detail': 'پنل پیدا نشد', 'code': 'PANEL_NOT_FOUND'})
     # Only real inbounds are exposed; hidden group/service lookups (kind='group') are not listed.
-    hosts = {}
-    for h in db.query(PanelInbound).filter_by(panel_id=panel_id, kind='host').all():
-        hosts.setdefault(h.tag, []).append({'remark': h.remark, 'address': (h.extra or {}).get('address', '')})
-    return [{'id':x.id,'kind':x.kind,'remote_id':x.remote_id,'tag':x.tag,'protocol':x.protocol,'network':x.network,'security':x.security,'remark':x.remark,'cached_at':x.cached_at,'hosts':hosts.get(x.tag, [])} for x in db.query(PanelInbound).filter_by(panel_id=panel_id, kind='inbound').all()]
+    return [{'id':x.id,'kind':x.kind,'remote_id':x.remote_id,'tag':x.tag,'protocol':x.protocol,'network':x.network,'security':x.security,'remark':x.remark,'cached_at':x.cached_at} for x in db.query(PanelInbound).filter_by(panel_id=panel_id, kind='inbound').all()]
 
 
 @router.put('/{panel_id}')

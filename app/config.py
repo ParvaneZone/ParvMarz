@@ -18,12 +18,6 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     initial_admin_username: str = ""
     initial_admin_password: str = ""
-    telegram_bot_token: str = ""
-    telegram_admin_chat_id: str = ""
-    webhook_url: str = ""
-    webhook_secret: str = ""
-    expiry_warn_days: int = 3
-    auto_delete_expired_days: int = 0  # 0 = off
     login_rate_limit_enabled: bool = True
     login_max_attempts: int = 5
     login_lock_seconds: int = 900
