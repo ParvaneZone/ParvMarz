@@ -41,7 +41,6 @@ backup() {
 }
 creds() { dc exec -T subhub cat /app/data/initial-admin.txt 2>/dev/null || echo "No generated credentials file (you set INITIAL_ADMIN_PASSWORD yourself, or use option: Reset admin password)."; }
 reset_pw() { u="$(ask 'Admin username' admin)"; dc exec subhub python -m cli reset-admin-password --username "$u"; }
-clear_lock() { dc exec -T subhub python -m cli clear-login-lock; }
 reset_2fa() { u="$(ask 'Admin username' admin)"; dc exec subhub python -m cli disable-2fa --username "$u"; }
 uninstall() {
   [ "$(ask 'Remove containers AND data? type yes' no)" = yes ] && dc down -v && echo "Removed (source dir kept: $DIR)"
@@ -52,7 +51,7 @@ while true; do
   echo "=== Jinx Data menu ($DIR) ==="
   echo " 1) Status            9) Reset admin password"
   echo " 2) Logs (live)      10) Show generated admin login"
-  echo " 3) Start            11) Clear login lock"
+  echo " 3) Start            11) Clear login lock (restart)"
   echo " 4) Stop             12) Backup database"
   echo " 5) Restart          13) Rebuild"
   echo " 6) Update           14) Uninstall"
@@ -65,8 +64,7 @@ while true; do
     2) dc logs -f --tail=100;;
     3) dc up -d; pause;;
     4) dc stop; pause;;
-    5) dc restart; pause;;
-    11) clear_lock; pause;;
+    5|11) dc restart; pause;;
     6) update; pause;;
     7) edit_env; pause;;
     8|p) change_port; pause;;

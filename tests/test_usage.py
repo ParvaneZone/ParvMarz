@@ -10,8 +10,7 @@ def test_usage_buckets_follow_timezone_and_group_by_dimensions():
     eng = create_engine("sqlite://", future=True)
     Base.metadata.create_all(eng)
     db = sessionmaker(bind=eng)()
-    def t(*a):
-        return datetime(*a, tzinfo=timezone.utc)
+    t = lambda *a: datetime(*a, tzinfo=timezone.utc)
     db.add_all([
         models.UsageLog(user_id=1, delta=100, total_after=100, recorded_at=t(2026, 10, 1, 20, 0), admin_id=1, panel_id=1, service_id=1),
         models.UsageLog(user_id=1, delta=50, total_after=150, recorded_at=t(2026, 10, 1, 21, 0), admin_id=1, panel_id=2, service_id=1),

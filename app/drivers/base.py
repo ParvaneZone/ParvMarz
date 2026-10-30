@@ -67,41 +67,6 @@ DEFAULT_CAPABILITIES: dict[str, bool] = {
 
 _LIST_KEYS = ("inbounds", "items", "data", "results")
 
-def normalize_hosts(data: Any, id_to_tag: dict[str, str] | None = None) -> list[dict[str, Any]]:
-    """Panel hosts -> [{tag, remark, address}]. Marzban answers {tag: [host, ...]}, others a list / {hosts: [...]};
-    hosts may point at their inbound by tag, nested object or numeric inbound_id (resolved via id_to_tag)."""
-    out: list[dict[str, Any]] = []
-    id_to_tag = id_to_tag or {}
-
-    def add(h: Any, tag: Any = None) -> None:
-        if not isinstance(h, dict):
-            return
-        tag = tag or h.get("inbound_tag") or h.get("tag") or h.get("inbound")
-        if isinstance(tag, dict):
-            tag = tag.get("tag") or id_to_tag.get(str(tag.get("id")))
-        if not tag and h.get("inbound_id") is not None:
-            tag = id_to_tag.get(str(h.get("inbound_id")))
-        if isinstance(tag, (int, float)) or (isinstance(tag, str) and tag in id_to_tag):
-            tag = id_to_tag.get(str(tag), tag)
-        remark = h.get("remark") or h.get("name")
-        if tag and remark:
-            addr = h.get("address")
-            out.append({"tag": str(tag), "remark": str(remark),
-                        "address": (", ".join(map(str, addr)) if isinstance(addr, list) else str(addr or ""))})
-
-    for key in ("hosts", "items", "data"):
-        if isinstance(data, dict) and isinstance(data.get(key), list):
-            data = data[key]
-            break
-    if isinstance(data, dict):
-        for tag, hosts in data.items():
-            for h in (hosts if isinstance(hosts, list) else []):
-                add(h, tag)
-    elif isinstance(data, list):
-        for h in data:
-            add(h)
-    return out
-
 
 def normalize_inbounds(data: Any, default_protocol: str | None = None) -> list[dict[str, Any]]:
     """Turn whatever a panel returns for "list inbounds" into [{tag, protocol, network, security, ...}].
@@ -176,9 +141,6 @@ class PanelDriver(ABC):
 
     async def list_inbounds(self) -> list[dict[str, Any]]:
         raise NotImplementedError(f"{type(self).__name__} does not support inbound listing")
-
-    async def list_hosts(self) -> list[dict[str, Any]]:
-        raise NotImplementedError(f"{type(self).__name__} does not support host listing")
 
     async def list_groups(self) -> list[dict[str, Any]]:
         raise NotImplementedError(f"{type(self).__name__} does not support group listing")

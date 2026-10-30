@@ -1,23 +1,20 @@
-import asyncio
-import base64
-import json
-import secrets
-import time
+import asyncio, base64, json, secrets, time
 from urllib.parse import quote
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from app.config import settings
 from sqlalchemy import func
 from app.core.subtokens import verify_subscription_token
 from app.core.crypto import decrypt_secret
-from app.db.models import SyncTask, User, UserPanelAccount, Panel, Service, Setting, InboundAlias, PanelInbound, Admin
+from app.db.models import SyncTask, User, UserPanelAccount, Panel, Service, ServiceItem, Setting, InboundAlias, PanelInbound, Admin
 from app.db.session import SessionLocal
 from app.drivers.factory import build_driver
 from app.core.errors import short_error
 import logging
 log=logging.getLogger('jinxdata.sub')
 _fetch_err:dict[int,str]={}
-from app.subscription.merge import deduplicate_links, apply_aliases, apply_config_names, to_clash, to_singbox, to_v2ray_json
+from app.subscription.merge import deduplicate_links, apply_aliases, to_clash, to_singbox, to_v2ray_json
 from app.subscription.pick import pick_links
 from app.subscription.geo import client_ip, spawn_record
 from app.subscription.page import render_subscription_page
@@ -29,11 +26,9 @@ async def _remote_links(user_id:int, token_version:int)->list[str]:
   if not user or user.sub_token_version!=token_version: raise HTTPException(404,'Subscription not found')
   accounts=db.query(UserPanelAccount,Panel).join(Panel,Panel.id==UserPanelAccount.panel_id).filter(UserPanelAccount.user_id==user_id,Panel.enabled.is_(True)).all()
   snapshot=[(a.panel_id,a.remote_username,p.type,p.base_url,p.credentials_enc,p.verify_ssl) for a,p in accounts]
-  amap={}; cmap={}
+  amap={}
   for pid_ in {a[0] for a in snapshot}:
    al={x.tag:x.display_name for x in db.query(InboundAlias).filter_by(panel_id=pid_).all()}
-   cm={k[4:]:v for k,v in al.items() if k.startswith('cfg:')}
-   if cm: cmap[pid_]=cm
    if al: amap[pid_]=(al,[(x.tag,x.protocol,x.network,x.security) for x in db.query(PanelInbound).filter_by(panel_id=pid_,kind='inbound').all()])
   setting=db.get(Setting,f'subcache:{user_id}:{token_version}')
   persisted=setting.value if setting and isinstance(setting.value,dict) else None
@@ -46,7 +41,6 @@ async def _remote_links(user_id:int, token_version:int)->list[str]:
   try:
    username,_,password=decrypt_secret(enc).partition('\n'); driver=build_driver(ptype,url,{'username':username,'password':password},ssl)
    got=await asyncio.wait_for(driver.get_sub_links(remote),timeout=8)
-   if pid in cmap: got=apply_config_names(got,cmap[pid])
    if pid in amap: got=apply_aliases(got,amap[pid][1],amap[pid][0])
    return True, got
   except Exception as exc:
@@ -97,7 +91,7 @@ def _qr_svg(text:str)->str:
  except Exception: return ''
 # Always a *valid* config (proper UUID) so apps can import the subscription and show the reason as its name,
 # instead of failing the whole import with an "invalid config" error.
-def _placeholder(name:str)->list[str]: return ['vless://00000000-0000-0000-0000-000000000000@127.0.0.1:1?security=none&type=tcp#'+quote(name)]
+def _placeholder(name:str)->list[str]: return [f'vless://00000000-0000-0000-0000-000000000000@127.0.0.1:1?security=none&type=tcp#'+quote(name)]
 _OFF_DEFAULT={'expired':'زمان اشتراک شما تمام شده','limited':'حجم اشتراک شما تمام شده','disabled':'اشتراک شما غیرفعال است'}
 def _off_links(u)->list[str]:
  """اینباند خاموش: فقط برای کاربران ادمینی که مدیر اصلی دسترسی sub.off_inbound را برایش فعال کرده."""
