@@ -10,6 +10,7 @@ import { UsageTab } from "./Usage";
 import { ActionsTab, LiveTab, GeoTab, DiagnosticsTab } from "./Ops";
 import { GuideTab } from "./Guide";
 import { Icon } from "./Icon";
+import { BgScene, useScrollMotion } from "./Motion";
 import { copyText } from "./copy";
 import type { IconName } from "./Icon";
 import type { Prefs } from "./theme";
@@ -37,12 +38,11 @@ const errMsg=(e:unknown)=>e instanceof Error?e.message:String(e);
 const faStatus:Record<string,string>={active:"فعال",disabled:"غیرفعال",limited:"محدود",expired:"منقضی",on_hold:"در انتظار",healthy:"سالم",unhealthy:"ناسالم",down:"قطع",unknown:"نامشخص"};
 function QrModal({url,onClose}:{url:string;onClose:()=>void}){const [img,setImg]=React.useState("");React.useEffect(()=>{if(url)void QRCode.toDataURL(url,{width:320,margin:2}).then(setImg)},[url]);return <Modal isOpen={!!url} onClose={onClose} isCentered><ModalOverlay/><ModalContent><ModalHeader>QR</ModalHeader><ModalCloseButton/><ModalBody pb={6}>{img&&<Image src={img} mx="auto" mb={3}/>}<Input readOnly value={url} onFocus={e=>e.currentTarget.select()}/></ModalBody></ModalContent></Modal>}
 
-function useScrollTrigger(dep:unknown){React.useEffect(()=>{const SEL=".panel,.stat,.create-form,.login,.guide .chakra-accordion__item";const still=matchMedia("(prefers-reduced-motion:reduce)").matches;const io=new IntersectionObserver(es=>es.forEach(x=>{if(x.isIntersecting){x.target.setAttribute("data-rv","in");io.unobserve(x.target)}}),{threshold:.06,rootMargin:"0px 0px -32px 0px"});const scan=()=>document.querySelectorAll(SEL+":not([data-rv])").forEach(el=>{if(still){el.setAttribute("data-rv","in");return}el.setAttribute("data-rv","");io.observe(el)});scan();const mo=new MutationObserver(scan);mo.observe(document.body,{childList:true,subtree:true});const onScroll=()=>document.querySelector(".hdr")?.toggleAttribute("data-stuck",window.scrollY>8);onScroll();window.addEventListener("scroll",onScroll,{passive:true});return()=>{io.disconnect();mo.disconnect();window.removeEventListener("scroll",onScroll)}},[dep])}
 function App({prefs,setPrefs}:{prefs:Prefs;setPrefs:(p:Prefs)=>void}){
  const lang=prefs.lang, theme=prefs.theme; const setLang=(l:"fa"|"en")=>setPrefs({...prefs,lang:l}); const setTheme=(m:"light"|"dark"|"oled")=>setPrefs({...prefs,theme:m});
  const [otp,setOtp]=React.useState(""); const [need2fa,setNeed2fa]=React.useState(false);
  const [token,setToken]=React.useState(localStorage.getItem("subhub_token")||""); const [username,setUsername]=React.useState(""); const [password,setPassword]=React.useState(""); const TABS=["dashboard","users","panels","inbounds","services","templates","admins","usage","actions","live","geo","diagnostics","system","account","guide"]; const fromHash=()=>{const h=location.hash.replace("#/","").replace("#","");return TABS.includes(h)?h:"users"}; const [tab,setTabState]=React.useState(fromHash()); const [menu,setMenu]=React.useState(false); const setTab=(id:string)=>{location.hash="/"+id;setTabState(id);setMenu(false)}; React.useEffect(()=>{const f=()=>setTabState(fromHash());window.addEventListener("hashchange",f);return()=>window.removeEventListener("hashchange",f)},[]); const [search,setSearch]=React.useState(""); const [status,setStatus]=React.useState(""); const [showCreate,setShowCreate]=React.useState(false); const [adv,setAdv]=React.useState(false); const [cg,setCg]=React.useState("30"); const [cd,setCd]=React.useState("30"); const toast=useToast(); const qc=useQueryClient(); const fa=lang==="fa";
- const t=(faText:string,enText:string)=>fa?faText:enText; useScrollTrigger(token);
+ const t=(faText:string,enText:string)=>fa?faText:enText; useScrollMotion(token);
  const stLabel=(v:string)=>fa?(faStatus[v]??v):v;
  const themeLabel=theme==="light"?t("روشن","Light"):theme==="dark"?t("تیره","Dark"):"OLED";
  const nextTheme=()=>setTheme(theme==="light"?"dark":theme==="dark"?"oled":"light");
@@ -99,5 +99,5 @@ const client=new QueryClient();
 function Root(){
  const [prefs,setPrefsState]=React.useState<Prefs>(()=>{const p=loadPrefs();applyPrefs(p);return p});
  const theme=React.useMemo(()=>buildTheme(prefs),[prefs.accent]); // eslint-disable-line react-hooks/exhaustive-deps
- return <ChakraProvider theme={theme}><QueryClientProvider client={client}><App prefs={prefs} setPrefs={setPrefsState}/></QueryClientProvider></ChakraProvider>}
+ return <ChakraProvider theme={theme}><QueryClientProvider client={client}><BgScene/><App prefs={prefs} setPrefs={setPrefsState}/></QueryClientProvider></ChakraProvider>}
 createRoot(document.getElementById("root")!).render(<Root/>);
