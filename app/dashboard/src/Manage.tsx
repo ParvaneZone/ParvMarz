@@ -312,6 +312,23 @@ export function BulkBar({ c, ids, clear }: { c: Ctx; ids: number[]; clear: () =>
 }
 
 /* ---------------- Inbound names ---------------- */
+function ConfigNames({ c }: { c: Ctx }) {
+  const { api, t } = c; const run = useRun(c, ["cfgs"]);
+  const q = useQuery({ queryKey: ["cfgs"], queryFn: () => api("/api/inbounds/configs"), staleTime: 60000 });
+  const [v, setV] = React.useState<Record<string, string>>({}); const key = (x: any) => `${x.panel_id}|${x.name}`;
+  return <Box>
+    <HStack justify="space-between" mb={1}><Heading size="sm">{t("نام کانفیگ‌ها (همان چیزی که در برنامه دیده می‌شود)", "Config names (as shown in the client app)")}</Heading>
+      <Button size="xs" isLoading={q.isFetching} onClick={() => void q.refetch()}>{t("دریافت مجدد", "Reload")}</Button></HStack>
+    <Text fontSize="sm" className="muted" mb={3}>{t("نام جدید را بنویسید و ذخیره کنید؛ خالی = نام اصلی. روی همه‌ی اشتراک‌ها اعمال می‌شود.", "Type a new name and save; empty = original. Applies to every subscription.")}</Text>
+    {q.isLoading && <Text className="muted">{t("در حال دریافت از پنل‌ها…", "Fetching from panels…")}</Text>}
+    {(q.data?.notes || []).map((n: string, i: number) => <Text key={i} color="orange.400" fontSize="sm" className="ltr">{n}</Text>)}
+    <Box className="tscroll"><Table size="sm"><Thead><Tr><Th>{t("پنل", "Panel")}</Th><Th>{t("نام اصلی", "Original")}</Th><Th>{t("آدرس", "Address")}</Th><Th>{t("نام جدید", "New name")}</Th><Th /></Tr></Thead>
+      <Tbody>{(q.data?.items || []).map((x: any) => <Tr key={key(x)}><Td>{x.panel_name}</Td><Td fontWeight={700}>{x.name}</Td><Td className="ltr muted">{x.server}:{x.port} · {[x.type, x.network].filter(Boolean).join("/")}</Td>
+        <Td><Input size="sm" value={v[key(x)] ?? x.display_name} onChange={e => setV({ ...v, [key(x)]: e.target.value })} /></Td>
+        <Td><Button size="xs" colorScheme="blue" onClick={() => run("/api/inbounds/config", J("PUT", { panel_id: x.panel_id, name: x.name, display_name: v[key(x)] ?? x.display_name }))}>{t("ذخیره", "Save")}</Button></Td></Tr>)}</Tbody></Table></Box>
+  </Box>;
+}
+
 export function InboundsTab(c: Ctx) {
   const { api, t } = c; const run = useRun(c, ["inbounds"]);
   const q = useQuery({ queryKey: ["inbounds"], queryFn: () => api("/api/inbounds") });
@@ -320,6 +337,8 @@ export function InboundsTab(c: Ctx) {
   return <Box className="panel">
     <Heading size="md" mb={1}>{t("نام اینباندها", "Inbound names")}</Heading>
     <Text fontSize="sm" className="muted" mb={4}>{t("نام هاست کنار هر اینباند نمایش داده می‌شود و مبنای تغییر نام و ساخت سرویس است. نام نمایشی به‌جای آن برای کاربران و ادمین‌ها دیده می‌شود؛ خالی = نام هاست. بعد از افزودن هاست، پنل را دوباره همگام‌سازی کنید.", "The host name is shown beside each inbound and is the base for renaming and building services. The display name replaces it for users and admins; empty = host name. Re-sync the panel after adding hosts.")}</Text>
+    <ConfigNames c={c} />
+    <Heading size="sm" mt={8} mb={3}>{t("اینباندها", "Inbounds")}</Heading>
     <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("پنل", "Panel")}</Th><Th>{t("هاست", "Host")}</Th><Th>{t("اینباند", "Inbound")}</Th><Th>{t("نوع", "Type")}</Th><Th>{t("نام نمایشی", "Display name")}</Th><Th /></Tr></Thead>
       <Tbody>{(q.data || []).map((x: any) => <Tr key={key(x)}><Td>{x.panel_name}</Td><Td>{(x.hosts || []).length ? (x.hosts as any[]).map((h, i) => <Box key={i}><Text fontWeight={700}>{h.remark}</Text>{h.address && <Text className="muted ltr" fontSize="xs">{h.address}</Text>}</Box>) : <Text className="muted">—</Text>}</Td><Td className="ltr muted">{x.tag}</Td><Td className="ltr">{[x.protocol, x.network, x.security].filter(Boolean).join(" / ")}</Td>
         <Td><Input size="sm" placeholder={(x.hosts || [])[0]?.remark || x.tag} value={v[key(x)] ?? x.display_name} onChange={e => setV({ ...v, [key(x)]: e.target.value })} /></Td>

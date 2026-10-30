@@ -17,7 +17,7 @@ from app.core.errors import short_error
 import logging
 log=logging.getLogger('jinxdata.sub')
 _fetch_err:dict[int,str]={}
-from app.subscription.merge import deduplicate_links, apply_aliases, to_clash, to_singbox, to_v2ray_json
+from app.subscription.merge import deduplicate_links, apply_aliases, apply_config_names, to_clash, to_singbox, to_v2ray_json
 from app.subscription.pick import pick_links
 from app.subscription.geo import client_ip, spawn_record
 from app.subscription.page import render_subscription_page
@@ -29,9 +29,11 @@ async def _remote_links(user_id:int, token_version:int)->list[str]:
   if not user or user.sub_token_version!=token_version: raise HTTPException(404,'Subscription not found')
   accounts=db.query(UserPanelAccount,Panel).join(Panel,Panel.id==UserPanelAccount.panel_id).filter(UserPanelAccount.user_id==user_id,Panel.enabled.is_(True)).all()
   snapshot=[(a.panel_id,a.remote_username,p.type,p.base_url,p.credentials_enc,p.verify_ssl) for a,p in accounts]
-  amap={}
+  amap={}; cmap={}
   for pid_ in {a[0] for a in snapshot}:
    al={x.tag:x.display_name for x in db.query(InboundAlias).filter_by(panel_id=pid_).all()}
+   cm={k[4:]:v for k,v in al.items() if k.startswith('cfg:')}
+   if cm: cmap[pid_]=cm
    if al: amap[pid_]=(al,[(x.tag,x.protocol,x.network,x.security) for x in db.query(PanelInbound).filter_by(panel_id=pid_,kind='inbound').all()])
   setting=db.get(Setting,f'subcache:{user_id}:{token_version}')
   persisted=setting.value if setting and isinstance(setting.value,dict) else None
@@ -44,6 +46,7 @@ async def _remote_links(user_id:int, token_version:int)->list[str]:
   try:
    username,_,password=decrypt_secret(enc).partition('\n'); driver=build_driver(ptype,url,{'username':username,'password':password},ssl)
    got=await asyncio.wait_for(driver.get_sub_links(remote),timeout=8)
+   if pid in cmap: got=apply_config_names(got,cmap[pid])
    if pid in amap: got=apply_aliases(got,amap[pid][1],amap[pid][0])
    return True, got
   except Exception as exc:

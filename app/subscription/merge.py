@@ -116,3 +116,15 @@ def apply_aliases(links:list[str],inbounds:list[tuple],aliases:dict)->list[str]:
    hit=cand if len(cand)==1 and cand[0] in aliases else []
   out.append(rename_link(link,aliases[hit[0]]) if len(hit)==1 else link)
  return out
+
+
+def apply_config_names(links: list[str], names: dict[str, str]) -> list[str]:
+    """names: original config name (host remark in the link) -> new name. Exact match first, else substring."""
+    keys = sorted((k for k, v in names.items() if k and v), key=len, reverse=True)
+    if not keys: return links
+    out = []
+    for link in links:
+        p = parse_link(link); name = (p or {}).get('name', '')
+        k = name if name in names and names[name] else next((x for x in keys if x in name), None)
+        out.append(rename_link(link, names[k] if k == name else name.replace(k, names[k])) if k else link)
+    return out
