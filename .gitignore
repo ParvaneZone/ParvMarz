@@ -10,3 +10,5 @@ dist/
 node_modules/
 *.tsbuildinfo
 .deployed-commit
+repo/
+.pytest_cache/
