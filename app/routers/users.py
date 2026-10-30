@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, StringConstraints
 from typing import Annotated
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from app.core.security import current_admin, require_sudo, require_perm
+from app.core.security import require_sudo, require_perm
 from app.core.subtokens import issue_subscription_token
 from app.db.models import Admin, User, Service, ServiceItem, Panel, PanelInbound, UserPanelAccount, SyncTask, AuditLog, UsageLog
 from app.db.session import get_db
@@ -44,7 +44,8 @@ def serialize_user(u,show_sub=True):
 @router.post('/user',response_model=UserOut,summary='ساخت کاربر',description='حجم به بایت است. سرویس باید در allowed_services نماینده باشد و سهمیه‌ها (تعداد/حجم/مدت) بررسی می‌شود. ساخت روی پنل‌ها غیرهمزمان انجام می‌شود (sync-status را ببینید).',responses=errs(401,403,404,409))
 def create_user(body:UserIn,admin:Admin=Depends(require_perm('users.create')),db:Session=Depends(get_db)):
  allowed(admin,body.service_id)
- deny=lambda: HTTPException(403,detail={'detail':'این دسترسی برای شما فعال نیست','code':'PERMISSION_DENIED'})
+ def deny():
+  return HTTPException(403,detail={'detail':'این دسترسی برای شما فعال نیست','code':'PERMISSION_DENIED'})
  if body.note and not has_perm(admin,'users.create_note'): raise deny()
  if body.data_limit_reset_strategy!='no_reset' and not has_perm(admin,'users.create_reset_strategy'): raise deny()
  if body.expire and not has_perm(admin,'users.create_expire_date'): raise deny()

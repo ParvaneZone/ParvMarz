@@ -1,4 +1,5 @@
-import base64, json
+import base64
+import json
 from urllib.parse import unquote, parse_qs
 
 def parse_link(link:str)->dict|None:

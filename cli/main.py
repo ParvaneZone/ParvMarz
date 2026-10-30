@@ -1,5 +1,4 @@
 import typer
-from sqlalchemy.orm import Session
 from app.db.session import Base, engine, SessionLocal
 from app.db.models import Admin
 from app.core.security import hash_password

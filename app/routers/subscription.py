@@ -1,13 +1,16 @@
-import asyncio, base64, json, secrets, time
+import asyncio
+import base64
+import json
+import secrets
+import time
 from urllib.parse import quote
-from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from app.config import settings
 from sqlalchemy import func
 from app.core.subtokens import verify_subscription_token
 from app.core.crypto import decrypt_secret
-from app.db.models import SyncTask, User, UserPanelAccount, Panel, Service, ServiceItem, Setting, InboundAlias, PanelInbound, Admin
+from app.db.models import SyncTask, User, UserPanelAccount, Panel, Service, Setting, InboundAlias, PanelInbound, Admin
 from app.db.session import SessionLocal
 from app.drivers.factory import build_driver
 from app.core.errors import short_error
@@ -91,7 +94,7 @@ def _qr_svg(text:str)->str:
  except Exception: return ''
 # Always a *valid* config (proper UUID) so apps can import the subscription and show the reason as its name,
 # instead of failing the whole import with an "invalid config" error.
-def _placeholder(name:str)->list[str]: return [f'vless://00000000-0000-0000-0000-000000000000@127.0.0.1:1?security=none&type=tcp#'+quote(name)]
+def _placeholder(name:str)->list[str]: return ['vless://00000000-0000-0000-0000-000000000000@127.0.0.1:1?security=none&type=tcp#'+quote(name)]
 _OFF_DEFAULT={'expired':'زمان اشتراک شما تمام شده','limited':'حجم اشتراک شما تمام شده','disabled':'اشتراک شما غیرفعال است'}
 def _off_links(u)->list[str]:
  """اینباند خاموش: فقط برای کاربران ادمینی که مدیر اصلی دسترسی sub.off_inbound را برایش فعال کرده."""
