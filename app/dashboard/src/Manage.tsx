@@ -26,15 +26,16 @@ export function PanelsTab(c: Ctx) {
   const empty = { name: "", type: "marzban", base_url: "", username: "", password: "", verify_ssl: true, enabled: true, username_prefix: "", sync_interval: 60 };
   const [f, setF] = React.useState<any>(null); const [editId, setEditId] = React.useState<number | null>(null);
   const qc = useQueryClient();
-  const [inb, setInb] = React.useState<{ panel: any; rows: any[]; busy: boolean; error: string } | null>(null);
+  const [inb, setInb] = React.useState<{ panel: any; rows: any[]; busy: boolean; error: string; note?: string } | null>(null);
   const set = (k: string, v: any) => setF({ ...f, [k]: v });
   /** Pull the panel's real inbounds (never services/groups) and refresh the cache the UI reads from. */
   const pullInbounds = async (p: any, force: boolean) => {
     setInb({ panel: p, rows: [], busy: true, error: "" });
     try {
       let rows = force ? [] : await api(`/api/panels/${p.id}/inbounds`).catch(() => []);
-      if (!rows.length) { await api(`/api/panels/${p.id}/sync`, J("POST")); rows = await api(`/api/panels/${p.id}/inbounds`); }
-      setInb({ panel: p, rows, busy: false, error: "" });
+      let note = "";
+      if (!rows.length || force) { const r = await api(`/api/panels/${p.id}/sync`, J("POST")); note = r?.hosts_error ? t("هاست‌ها: ", "Hosts: ") + r.hosts_error : ""; rows = await api(`/api/panels/${p.id}/inbounds`); }
+      setInb({ panel: p, rows, busy: false, error: "", note });
     } catch (e) { setInb({ panel: p, rows: [], busy: false, error: msg(e) }); }
     await Promise.all(["panels", "inbounds"].map(k => qc.invalidateQueries({ queryKey: [k] })));
   };
@@ -70,8 +71,9 @@ export function PanelsTab(c: Ctx) {
       <HStack mb={3} justify="space-between"><Text fontSize="sm" className="muted">{t("فقط اینباندهای واقعی پنل (نه سرویس یا گروه).", "Real panel inbounds only (not services or groups).")}</Text>
         <Button size="xs" leftIcon={<Icon name="refresh" size={14} />} isLoading={inb?.busy} onClick={() => inb && void pullInbounds(inb.panel, true)}>{t("دریافت مجدد از پنل", "Fetch from panel")}</Button></HStack>
       {inb?.error && <Text color="red.400" fontSize="sm" mb={2}>{inb.error}</Text>}
+      {inb?.note && <Text color="orange.400" fontSize="sm" mb={2} className="ltr">{inb.note}</Text>}
       {inb && !inb.busy && !inb.error && inb.rows.length === 0 && <Text fontSize="sm" className="muted">{t("اینباندی پیدا نشد.", "No inbounds found.")}</Text>}
-      <Table size="sm"><Thead><Tr><Th>#</Th><Th>tag</Th><Th>protocol</Th><Th>network</Th><Th>security</Th></Tr></Thead><Tbody>{(inb?.rows || []).map((x: any, n: number) => <Tr key={x.id}><Td>{n + 1}</Td><Td className="ltr">{x.tag}</Td><Td>{x.protocol || "—"}</Td><Td>{x.network || "—"}</Td><Td>{x.security || "—"}</Td></Tr>)}</Tbody></Table></ModalBody></ModalContent></Modal>
+      <Table size="sm"><Thead><Tr><Th>#</Th><Th>{t("هاست", "Host")}</Th><Th>tag</Th><Th>protocol</Th><Th>network</Th><Th>security</Th></Tr></Thead><Tbody>{(inb?.rows || []).map((x: any, n: number) => <Tr key={x.id}><Td>{n + 1}</Td><Td>{(x.hosts || []).map((h: any) => h.remark).join("، ") || "—"}</Td><Td className="ltr">{x.tag}</Td><Td>{x.protocol || "—"}</Td><Td>{x.network || "—"}</Td><Td>{x.security || "—"}</Td></Tr>)}</Tbody></Table></ModalBody></ModalContent></Modal>
   </Box>;
 }
 
