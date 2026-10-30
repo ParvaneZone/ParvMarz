@@ -31,6 +31,8 @@ async def _lookup(ip: str) -> dict:
     except Exception as exc:
         log.warning("geo lookup failed for %s: %s", ip, exc)
         return {}
+    if len(_mem) > 3000:
+        _mem.pop(next(iter(_mem)), None)
     _mem[ip] = r
     return r
 

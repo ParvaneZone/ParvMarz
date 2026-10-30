@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import secrets
+import shlex
 from pathlib import Path
 def main():
     """Print `export` lines with auto-generated secrets (used by the Docker entrypoint)."""
@@ -40,7 +41,7 @@ def main():
             f.write_text(f"username: {out.get('INITIAL_ADMIN_USERNAME') or os.environ['INITIAL_ADMIN_USERNAME']}\npassword: {saved['admin_password']}\n")
             f.chmod(0o600)
         out["INITIAL_ADMIN_PASSWORD"] = saved["admin_password"]
-    port = os.environ.get("PORT", "8000")
+    port = os.environ.get("PANEL_PORT") or os.environ.get("PORT", "8000")
     url = os.environ.get("PUBLIC_BASE_URL", "")
     if not url or "jinxdata.example.com" in url:
         out["PUBLIC_BASE_URL"] = url = f"http://localhost:{port}"
@@ -50,7 +51,7 @@ def main():
     if changed:
         store.write_text(json.dumps(saved)); store.chmod(0o600)
     for k, v in out.items():
-        print(f"export {k}='{v}'")
+        print(f"export {k}={shlex.quote(v)}")
 
 
 if __name__ == "__main__":

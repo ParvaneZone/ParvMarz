@@ -11,13 +11,20 @@ services:
       - path: .env
         required: false
     ports:
-      - "${PORT:-8000}:8000"
+      - "${PANEL_PORT:-${PORT:-8000}}:8000"
+      - "${SUB_BIND:-127.0.0.1}:${SUB_PORT:-8001}:8001"
     volumes:
       - subhub_data:/app/data
+      - ./certs:/etc/letsencrypt:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      test: ["CMD", "python", "-m", "cli.health"]
       interval: 30s
-      timeout: 5s
+      timeout: 6s
       start_period: 40s
       retries: 3
 volumes:

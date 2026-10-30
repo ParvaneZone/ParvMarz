@@ -9,6 +9,7 @@ from app.config import settings
 from app.db.session import Base, engine, SessionLocal
 from app.db.models import Admin
 from app.core.security import hash_password
+from app.core.hardening import HostGuard, BlockSensitive, InputGuard, SecureHeaders, DASH_CSP
 from app.routers import auth, panels, system, subscription, admins, services, users, templates, bulk, inbounds, usage, ops, reports, api_keys, docs_api, geo
 from app.jobs.scheduler import start_scheduler, stop_scheduler
 
@@ -32,9 +33,10 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title=settings.app_name, docs_url="/docs" if settings.openapi_enabled else None,
               openapi_url="/openapi.json" if settings.openapi_enabled else None,
               redoc_url="/redoc" if settings.openapi_enabled else None, lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list,
-                   allow_credentials=True, allow_methods=["GET","POST","PUT","PATCH","DELETE"],
-                   allow_headers=["Authorization","Content-Type","Accept-Language"])
+if settings.cors_origin_list:
+    app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list,
+                       allow_credentials=True, allow_methods=["GET","POST","PUT","PATCH","DELETE"],
+                       allow_headers=["Authorization","Content-Type","Accept-Language","X-API-Key"])
 _FIELDS = {"username": "نام کاربری", "password": "رمز", "role": "نقش", "max_users": "حداکثر کاربر",
            "max_total_traffic": "سقف کل حجم", "max_user_traffic": "سقف حجم هر کاربر", "max_user_days": "سقف روز هر کاربر",
            "allowed_services": "سرویس‌های مجاز", "permissions": "دسترسی‌ها", "expire": "انقضا", "name": "نام",
@@ -63,7 +65,8 @@ async def validation_error(request, exc: RequestValidationError):
 app.include_router(auth.router)
 app.include_router(panels.router)
 app.include_router(system.router)
-app.include_router(subscription.router)
+if not settings.split_mode:  # with a separate sub port the panel app serves no /sub at all
+    app.include_router(subscription.router)
 app.include_router(admins.router)
 app.include_router(services.router)
 app.include_router(users.router)
@@ -76,18 +79,6 @@ app.include_router(api_keys.router)
 app.include_router(docs_api.router)
 app.include_router(geo.router)
 app.include_router(reports.router)
-
-@app.middleware("http")
-async def security_headers(request, call_next):
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Referrer-Policy"] = "no-referrer"
-    return response
-
-@app.get("/", include_in_schema=False)
-def root():
-    return {"service": settings.app_name, "dashboard": "/dashboard/"}
 
 _dist = Path(__file__).parent / "dashboard" / "dist"
 if (_dist / "assets").is_dir():
@@ -104,4 +95,11 @@ def dashboard():
     index = Path(__file__).parent / "dashboard" / "dist" / "index.html"
     if index.exists():
         return FileResponse(index)
-    return {"message": "Dashboard is not built yet", "build": "cd app/dashboard && npm ci && npm run build"}
+    return {"message": "Dashboard is not built yet"}
+
+
+# outermost last: host check -> sensitive paths -> input guard -> headers
+app.add_middleware(SecureHeaders, csp=DASH_CSP, hsts=bool(settings.panel_domain))
+app.add_middleware(InputGuard)
+app.add_middleware(BlockSensitive)
+app.add_middleware(HostGuard, domain=settings.panel_domain)

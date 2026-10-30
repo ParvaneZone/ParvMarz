@@ -9,7 +9,7 @@ from app.jobs.reconcile import reconcile
 from app.jobs.reset_usage import reset_usage_job
 from app.jobs.health_check import check_panels
 from app.jobs.backup import backup_database
-from app.jobs.maintenance import warn_expiring, delete_old_expired
+from app.jobs.maintenance import warn_expiring, delete_old_expired, prune_data, trim_memory
 
 scheduler=AsyncIOScheduler(timezone='UTC') if AsyncIOScheduler else None
 async def _outbox(): await drain_outbox()
@@ -34,6 +34,8 @@ def start_scheduler():
  scheduler.add_job(_backup,'interval',hours=24,id='backup',replace_existing=True,max_instances=1)
  scheduler.add_job(warn_expiring,'interval',hours=6,id='warn_expiring',replace_existing=True,max_instances=1)
  scheduler.add_job(delete_old_expired,'interval',hours=6,id='auto_delete',replace_existing=True,max_instances=1)
+ scheduler.add_job(prune_data,'interval',hours=6,id='prune',replace_existing=True,max_instances=1)
+ scheduler.add_job(trim_memory,'interval',minutes=20,id='trim',replace_existing=True,max_instances=1)
  scheduler.start()
 def stop_scheduler():
  if scheduler is not None and scheduler.running: scheduler.shutdown(wait=False)

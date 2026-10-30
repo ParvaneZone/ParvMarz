@@ -1,3 +1,4 @@
+from app.config import settings
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, StringConstraints
@@ -40,7 +41,7 @@ def list_users(q:str|None=None,status:str|None=None,admin_id:int|None=None,servi
  return {'total':total,'items':[serialize_user(u,show) for u in rows]}
 def serialize_user(u,show_sub=True):
  token=issue_subscription_token(u.username,int(u.created_at.timestamp()),u.sub_token_version,user_id=u.id)
- return {'id':u.id,'username':u.username,'admin_id':u.admin_id,'service_id':u.service_id,'status':u.status,'data_limit':u.data_limit,'used_traffic':u.used_traffic,'expire':u.expire,'note':u.note,'created_at':u.created_at,'subscription_url':f'/sub/{token}' if show_sub else None}
+ return {'id':u.id,'username':u.username,'admin_id':u.admin_id,'service_id':u.service_id,'status':u.status,'data_limit':u.data_limit,'used_traffic':u.used_traffic,'expire':u.expire,'note':u.note,'created_at':u.created_at,'subscription_url':(f'{settings.sub_base_url}/sub/{token}' if settings.split_mode else f'/sub/{token}') if show_sub else None}
 @router.post('/user',response_model=UserOut,summary='ساخت کاربر',description='حجم به بایت است. سرویس باید در allowed_services نماینده باشد و سهمیه‌ها (تعداد/حجم/مدت) بررسی می‌شود. ساخت روی پنل‌ها غیرهمزمان انجام می‌شود (sync-status را ببینید).',responses=errs(401,403,404,409))
 def create_user(body:UserIn,admin:Admin=Depends(require_perm('users.create')),db:Session=Depends(get_db)):
  allowed(admin,body.service_id)

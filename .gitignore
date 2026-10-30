@@ -11,3 +11,5 @@ data/
 dist/
 node_modules/
 repo/
+certs/*
+!certs/.gitkeep

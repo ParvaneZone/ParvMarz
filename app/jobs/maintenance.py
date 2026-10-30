@@ -40,3 +40,38 @@ def delete_old_expired() -> int:
                             object_id="auto", details={"count": len(rows)}))
         db.commit()
         return len(rows)
+
+
+def prune_data() -> dict:
+    """Keep the DB and RAM small over months: stale sub-cache / login-lock rows and old usage/audit logs."""
+    import time
+    from app.db.models import UsageLog
+    now = time.time(); out = {}
+    with SessionLocal() as db:
+        n = 0
+        for row in db.query(Setting).filter(Setting.key.like("subcache:%")).all():
+            v = row.value if isinstance(row.value, dict) else {}
+            if v.get("expires", 0) < now - 3600:
+                db.delete(row); n += 1
+        for row in db.query(Setting).filter(Setting.key.like("login:%")).all():
+            ts = (row.value or {}).get("t", []) if isinstance(row.value, dict) else []
+            if not ts or max(ts) < now - max(settings.login_lock_seconds, 900):
+                db.delete(row); n += 1
+        out["settings"] = n
+        if settings.log_retention_days > 0:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=settings.log_retention_days)
+            out["usage"] = db.query(UsageLog).filter(UsageLog.recorded_at < cutoff).delete(synchronize_session=False)
+            out["audit"] = db.query(AuditLog).filter(AuditLog.created_at < cutoff).delete(synchronize_session=False)
+        db.commit()
+    return out
+
+
+def trim_memory() -> None:
+    """Return freed heap pages to the OS (glibc keeps them otherwise, so RSS only ever grows)."""
+    import gc
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass

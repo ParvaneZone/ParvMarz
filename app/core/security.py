@@ -15,13 +15,17 @@ from app.db.session import get_db
 bearer = HTTPBearer(auto_error=False)
 
 
+def _pw(password: str) -> bytes:
+    return password.encode()[:72]  # bcrypt only uses 72 bytes; newer bcrypt raises instead of truncating
+
+
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    return bcrypt.hashpw(_pw(password), bcrypt.gensalt()).decode()
 
 
 def verify_password(password: str, hashed: str) -> bool:
     try:
-        return bcrypt.checkpw(password.encode(), hashed.encode())
+        return bcrypt.checkpw(_pw(password), hashed.encode())
     except (ValueError, TypeError):
         return False
 
@@ -53,7 +57,10 @@ def _key_fail(request: Request, code: str):
     ip = request.client.host if request.client else "unknown"
     now = time.time()
     hits = [t for t in _key_failures.get(ip, []) if now - t < 900] + [now]
-    _key_failures[ip] = hits
+    if len(_key_failures) > 2000:
+        for k in [k for k, v in _key_failures.items() if not v or now - v[-1] >= 900]:
+            _key_failures.pop(k, None)
+    _key_failures[ip] = hits[-30:]
     raise HTTPException(401, detail={"detail": "کلید API نامعتبر است", "code": code})
 
 

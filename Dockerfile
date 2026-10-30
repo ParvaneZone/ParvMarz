@@ -33,7 +33,9 @@ RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh && mk
 COPY --from=frontend /src/app/dashboard/dist ./app/dashboard/dist
 COPY pyproject.toml alembic.ini ./
 COPY app ./app
+# only the built dashboard ships: no frontend sources/configs inside the image
+RUN rm -rf app/dashboard/src app/dashboard/package.json app/dashboard/package-lock.json app/dashboard/tsconfig.json app/dashboard/vite.config.ts app/dashboard/index.html
 COPY cli ./cli
 RUN pip install --no-cache-dir --no-deps --no-build-isolation .
-EXPOSE 8000
+EXPOSE 8000 8001
 CMD ["./docker-entrypoint.sh"]

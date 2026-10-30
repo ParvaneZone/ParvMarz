@@ -69,12 +69,11 @@ write_env() {
   ask ADMIN_USER "Admin username" "admin"
   ask ADMIN_PASS "Admin password (empty = random)" ""
   [ -n "$ADMIN_PASS" ] || ADMIN_PASS="$(rnd 8)"
-  ask PORT "Port" "8000"
-  ask PUBLIC_URL "Public URL (e.g. https://sub.example.com, empty = http://SERVER_IP:$PORT)" ""
-  if [ -z "$PUBLIC_URL" ]; then
-    ip="$(curl -fsS4 --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
-    PUBLIC_URL="http://$ip:$PORT"
-  fi
+  ask PORT "Panel port" "8000"
+  ask SUB_PORT "Subscription page port (must differ from panel port)" "$((PORT + 1))"
+  [ "$SUB_PORT" != "$PORT" ] || die "Panel and subscription ports must differ."
+  ip="$(curl -fsS4 --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
+  PUBLIC_URL="http://$ip:$PORT"; SUB_URL="http://$ip:$SUB_PORT"
   fernet="$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '\n')"
   cat > "$DIR/.env" <<ENV
 APP_NAME=Jinx Data
@@ -86,13 +85,17 @@ SUBSCRIPTION_HMAC_KEY=$(rnd 32)
 CREDENTIALS_ENCRYPTION_KEY=$fernet
 PUBLIC_BASE_URL=$PUBLIC_URL
 CORS_ORIGINS=$PUBLIC_URL
+SUB_PUBLIC_BASE_URL=$SUB_URL
 OPENAPI_ENABLED=false
 PANEL_ALLOW_PRIVATE_ADDRESSES=false
 SYNC_INTERVAL_SECONDS=60
 LOG_LEVEL=INFO
 INITIAL_ADMIN_USERNAME=$ADMIN_USER
 INITIAL_ADMIN_PASSWORD=$ADMIN_PASS
-PORT=$PORT
+PANEL_PORT=$PORT
+SUB_PORT=$SUB_PORT
+SUB_BIND=0.0.0.0
+LOG_RETENTION_DAYS=180
 ENV
   chmod 600 "$DIR/.env"
   say "Admin: $ADMIN_USER / $ADMIN_PASS   (save it; also in $DIR/.env)"
@@ -108,7 +111,8 @@ case "$CMD" in
     . "$DIR/.env"
     say "Done. Dashboard: ${PUBLIC_BASE_URL}/dashboard/"
     echo "Menu: run  parvmarz"
-    echo "Put HTTPS in front (deploy/Caddyfile.example) and remove INITIAL_ADMIN_PASSWORD from .env after first login."
+    [ -z "${SUB_PUBLIC_BASE_URL:-}" ] || echo "Subscription links: ${SUB_PUBLIC_BASE_URL}/sub/..."
+    echo "SSL + domain: run  parvmarz  and pick 17 (panel) / 18 (sub). Remove INITIAL_ADMIN_PASSWORD from .env after first login."
     ;;
   menu) exec "$DIR/parvmarz.sh" ;;
   update)

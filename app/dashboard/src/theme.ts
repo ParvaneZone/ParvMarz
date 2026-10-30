@@ -3,7 +3,8 @@ import { extendTheme } from "@chakra-ui/react";
 export type Mode = "light" | "dark" | "oled";
 export type Prefs = { lang: "fa" | "en"; theme: Mode; accent: string | null; bg: string | null };
 export const DEFAULT_PREFS: Prefs = { lang: "fa", theme: "light", accent: null, bg: null };
-const KEY = "subhub_prefs"; // survives refresh, logout and login on this browser
+const KEY = "jx_prefs"; try { const o = localStorage.getItem("subhub_prefs"); if (o && !localStorage.getItem(KEY)) localStorage.setItem(KEY, o); localStorage.removeItem("subhub_prefs"); } catch { /* ignore */ }
+// // survives refresh, logout and login on this browser
 const HEX = /^#[0-9a-f]{6}$/i;
 
 export function loadPrefs(): Prefs {

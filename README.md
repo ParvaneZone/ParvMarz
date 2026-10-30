@@ -50,3 +50,9 @@ Set `PORT=8080` in `.env` if 8000 is taken; set `PUBLIC_BASE_URL` to your real U
 | Marzban / Marzdar / Marzyar | reseller username + password |
 | PasarGuard | username + password, or API key `pg_key_...` as password |
 | Rebecca | API key `rk_...` as password (username anything) |
+
+## Ports, SSL, hardening
+- Panel and subscription page run on **separate ports** (`PANEL_PORT`, `SUB_PORT`; the panel app serves no `/sub`, the sub app knows nothing about the panel). Change them from the `parvmarz` menu (`8`/`p`, `s`). Leave `SUB_PORT` empty for the old single-port mode.
+- SSL: menu `17` (panel domain) / `18` (sub domain) issues a Let's Encrypt certificate (needs port 80 free once, DNS pointing here) and the panel then answers **only** on that domain over HTTPS. `19` renews (also daily via cron), `20` turns it off.
+- Database, backups, `.env`, sources and maps are never served; JSON bodies with control characters / absurd nesting / over 2 MB are rejected before any route runs. Admin passwords are stored as bcrypt hashes only.
+- Long-run memory: bounded in-process caches, periodic heap trim, stale cache rows and logs older than `LOG_RETENTION_DAYS` (default 180) are pruned automatically.

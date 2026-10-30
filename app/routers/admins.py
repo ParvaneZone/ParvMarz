@@ -14,8 +14,8 @@ from app.db.session import get_db
 
 router = APIRouter(prefix='/api/admins', tags=['admins'])
 class AdminCreate(BaseModel):
-    username: str = Field(min_length=3, max_length=80)
-    password: str = Field(min_length=12, max_length=200)
+    username: str = Field(min_length=3, max_length=80, pattern=r"^[A-Za-z0-9_.@-]+$")
+    password: str = Field(min_length=12, max_length=72)
     role: str = 'admin'
     max_users: int | None = Field(default=None, ge=0)
     max_total_traffic: int | None = Field(default=None, ge=0)

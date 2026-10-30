@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 
 
 class Settings(BaseSettings):
@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     login_rate_limit_enabled: bool = True
     login_max_attempts: int = 5
     login_lock_seconds: int = 900
+    # Separate listeners: when SUB_PORT is set the subscription page lives on its own port/app and the
+    # panel app serves no /sub at all (so the sub page can never lead to the panel address).
+    sub_port: int | None = None
+    panel_listen_port: int = 8000
+    sub_listen_port: int = 8001
+    panel_domain: str = ""   # if set (and a certificate exists) the panel answers only on this host, over TLS
+    sub_domain: str = ""
+    sub_public_base_url: str = ""
+    log_retention_days: int = 180  # usage/audit log pruning, 0 = keep forever
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -45,6 +54,27 @@ class Settings(BaseSettings):
             except Exception as exc:
                 raise ValueError("CREDENTIALS_ENCRYPTION_KEY must be a valid Fernet key") from exc
         return self
+
+    @field_validator("sub_port", mode="before")
+    @classmethod
+    def _empty_port(cls, v):
+        return None if v in ("", None) else v
+
+    @property
+    def split_mode(self) -> bool:
+        return self.sub_port is not None
+
+    @property
+    def sub_base_url(self) -> str:
+        """Public base URL used in subscription links."""
+        if not self.split_mode:
+            return self.public_base_url.rstrip("/")
+        if self.sub_public_base_url:
+            return self.sub_public_base_url.rstrip("/")
+        from urllib.parse import urlsplit
+        u = urlsplit(self.public_base_url)
+        host = self.sub_domain or u.hostname or "localhost"
+        return f"{'https' if self.sub_domain else (u.scheme or 'http')}://{host}:{self.sub_port}"
 
     @property
     def cors_origin_list(self) -> list[str]:

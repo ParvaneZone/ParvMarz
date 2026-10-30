@@ -6,4 +6,4 @@ if [ "${ENVIRONMENT:-production}" = "production" ]; then
   [ -f /app/data/initial-admin.txt ] && echo "Initial admin credentials: docker compose exec subhub cat /app/data/initial-admin.txt"
 fi
 alembic upgrade head
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
+exec python -m app.serve

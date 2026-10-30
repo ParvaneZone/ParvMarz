@@ -1,5 +1,6 @@
 import re
 import time
+from pathlib import Path
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -34,14 +35,14 @@ def _lock_set(db, key, attempts):
 
 
 class LoginInput(BaseModel):
-    username: str
-    password: str
+    username: str = Field(max_length=80)
+    password: str = Field(max_length=200)
     otp: str | None = Field(default=None, max_length=32)
 
 
 class PasswordInput(BaseModel):
     current_password: str
-    new_password: str = Field(min_length=12, max_length=200)
+    new_password: str = Field(min_length=12, max_length=72)
 
 
 def _err(status: int, detail: str, code: str) -> HTTPException:
@@ -114,6 +115,8 @@ def change_password(body: PasswordInput, admin: Admin = Depends(session_admin), 
     admin.password_hash = hash_password(body.new_password)
     admin.password_reset_at = datetime.now(timezone.utc)
     db.commit()
+    try: Path("/app/data/initial-admin.txt").unlink(missing_ok=True)  # no plaintext password left on disk
+    except OSError: pass
     return {"ok": True}
 
 

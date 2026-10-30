@@ -24,15 +24,80 @@ edit_env() {
   ${EDITOR:-$(command -v nano || command -v vi)} .env
   [ "$(ask 'Apply changes now (rebuild/restart)? y/n' y)" = y ] && apply
 }
+server_ip() { curl -fsS4 --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}'; }
+CERT_DIR="$DIR/certs"
+has_cert() { [ -f "$CERT_DIR/live/$1/fullchain.pem" ]; }
+valid_port() { [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]; }
+panel_port() { local p; p="$(get_env PANEL_PORT)"; [ -n "$p" ] || p="$(get_env PORT)"; echo "${p:-8000}"; }
+mkurl() { # scheme host port
+  if { [ "$1" = https ] && [ "$3" = 443 ]; } || { [ "$1" = http ] && [ "$3" = 80 ]; }; then echo "$1://$2"; else echo "$1://$2:$3"; fi
+}
+refresh_urls() {
+  local pd sd pp sp host cur
+  pd="$(get_env PANEL_DOMAIN)"; sd="$(get_env SUB_DOMAIN)"; pp="$(panel_port)"; sp="$(get_env SUB_PORT)"
+  cur="$(get_env PUBLIC_BASE_URL)"
+  if [ -n "$pd" ]; then host="$pd"; elif [[ "$cur" =~ ^https?://([^/:]+) ]]; then host="${BASH_REMATCH[1]}"; else host="$(server_ip)"; fi
+  if [ -n "$pd" ] && has_cert "$pd"; then cur="$(mkurl https "$host" "$pp")"; else cur="$(mkurl http "$host" "$pp")"; fi
+  set_env PUBLIC_BASE_URL "$cur"; set_env CORS_ORIGINS "$cur"
+  if [ -n "$sp" ]; then
+    if [ -n "$sd" ]; then host="$sd"; fi
+    if [ -n "$sd" ] && has_cert "$sd"; then set_env SUB_PUBLIC_BASE_URL "$(mkurl https "$host" "$sp")"; else set_env SUB_PUBLIC_BASE_URL "$(mkurl http "$host" "$sp")"; fi
+  else set_env SUB_PUBLIC_BASE_URL ""; fi
+}
 change_port() {
-  p="$(ask 'New host port' "$(get_env PORT || echo 8000)")"
-  [[ "$p" =~ ^[0-9]+$ ]] && [ "$p" -ge 1 ] && [ "$p" -le 65535 ] || { echo "Invalid port"; return; }
-  set_env PORT "$p"; apply
+  local p; p="$(ask 'New PANEL port' "$(panel_port)")"
+  valid_port "$p" || { echo "Invalid port"; return; }
+  [ "$p" != "$(get_env SUB_PORT)" ] || { echo "Panel and subscription ports must differ"; return; }
+  set_env PANEL_PORT "$p"; set_env PORT "$p"; refresh_urls; apply
+}
+change_sub_port() {
+  local p; p="$(ask 'Subscription port (separate from panel; 0 = serve /sub on the panel port)' "$(get_env SUB_PORT)")"
+  if [ "$p" = 0 ] || [ -z "$p" ]; then set_env SUB_PORT ""; set_env SUB_BIND 127.0.0.1; set_env SUB_DOMAIN ""; refresh_urls; apply; return; fi
+  valid_port "$p" || { echo "Invalid port"; return; }
+  [ "$p" != "$(panel_port)" ] || { echo "Panel and subscription ports must differ"; return; }
+  set_env SUB_PORT "$p"; set_env SUB_BIND 0.0.0.0; refresh_urls; apply
+  echo "Sub links now use: $(get_env SUB_PUBLIC_BASE_URL)/sub/..."
 }
 change_url() {
   u="$(ask 'Public URL (http://IP:PORT or https://domain)' "$(get_env PUBLIC_BASE_URL)")"
   [ -n "$u" ] || { echo "Empty"; return; }
   set_env PUBLIC_BASE_URL "$u"; set_env CORS_ORIGINS "$u"; apply
+}
+
+# ---- SSL (Let's Encrypt via certbot container, HTTP-01 on port 80) ----
+cert_cmd() { docker run --rm -p 80:80 -v "$CERT_DIR:/etc/letsencrypt" certbot/certbot "$@"; }
+install_cron() {
+  [ -d /etc/cron.d ] || return 0
+  printf '17 3 * * * root /usr/local/bin/parvmarz renew-cert >/dev/null 2>&1\n' > /etc/cron.d/jinx-renew
+}
+issue_cert() { # panel | sub
+  local who="$1" var dom email
+  if [ "$who" = panel ]; then var=PANEL_DOMAIN; else
+    [ -n "$(get_env SUB_PORT)" ] || { echo "Set a separate subscription port first (option s)."; return; }
+    var=SUB_DOMAIN
+  fi
+  dom="$(ask "Domain for the $who (its A record must point to this server)" "$(get_env $var)")"; dom="${dom,,}"
+  [[ "$dom" =~ ^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$ ]] || { echo "Invalid domain"; return; }
+  email="$(ask 'Email for expiry notices (optional)' '')"
+  if ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE '[:.]80$'; then echo "Port 80 is in use; stop the service using it and retry."; return; fi
+  mkdir -p "$CERT_DIR"
+  local args=(certonly --standalone --non-interactive --agree-tos --keep-until-expiring -d "$dom")
+  if [ -n "$email" ]; then args+=(-m "$email"); else args+=(--register-unsafely-without-email); fi
+  echo "Requesting certificate for $dom ..."
+  cert_cmd "${args[@]}" && has_cert "$dom" || { echo "Certificate request failed (check DNS and that port 80 is reachable)."; return; }
+  set_env "$var" "$dom"; install_cron; refresh_urls; apply
+  echo "Panel: $(get_env PUBLIC_BASE_URL)/dashboard/"
+  [ -z "$(get_env SUB_PORT)" ] || echo "Sub:   $(get_env SUB_PUBLIC_BASE_URL)/sub/..."
+}
+renew_cert() {
+  [ -d "$CERT_DIR/live" ] || { echo "No certificates yet."; return 0; }
+  rm -f "$CERT_DIR/.renewed"
+  cert_cmd renew --quiet --deploy-hook "touch /etc/letsencrypt/.renewed"
+  if [ -f "$CERT_DIR/.renewed" ]; then rm -f "$CERT_DIR/.renewed"; dc restart >/dev/null 2>&1; echo "Renewed and restarted."; else echo "Nothing to renew yet."; fi
+}
+remove_ssl() {
+  [ "$(ask 'Disable SSL/domain lock for panel and sub? (certificates are kept) y/n' n)" = y ] || return
+  set_env PANEL_DOMAIN ""; set_env SUB_DOMAIN ""; refresh_urls; apply
 }
 update() { PARVMARZ_DIR="$DIR" bash "$DIR/install.sh" update; }
 backup() {
@@ -47,6 +112,8 @@ uninstall() {
   [ "$(ask 'Remove containers AND data? type yes' no)" = yes ] && dc down -v && echo "Removed (source dir kept: $DIR)"
 }
 
+[ "${1:-}" = renew-cert ] && { renew_cert; exit 0; }
+
 while true; do
   clear 2>/dev/null || true
   echo "=== Jinx Data menu ($DIR) ==="
@@ -58,7 +125,11 @@ while true; do
   echo " 6) Update           14) Uninstall"
   echo " 7) Edit .env        15) Show URL / port"
   echo "16) Disable admin 2FA (lost phone)"
-  echo " 8) Change port / URL (p/u)      0) Exit"
+  echo " 8) Change panel port (p) / URL (u)"
+  echo " s) Change subscription port (separate)"
+  echo "17) SSL certificate for PANEL domain     18) SSL certificate for SUB domain"
+  echo "19) Renew SSL now                        20) Disable SSL / domain lock"
+  echo " 0) Exit"
   read -r -p "> " c || exit 0
   case "$c" in
     1) dc ps; pause;;
@@ -71,13 +142,18 @@ while true; do
     7) edit_env; pause;;
     8|p) change_port; pause;;
     u) change_url; pause;;
+    s) change_sub_port; pause;;
+    17) issue_cert panel; pause;;
+    18) issue_cert sub; pause;;
+    19) renew_cert; pause;;
+    20) remove_ssl; pause;;
     9) reset_pw; pause;;
     10) creds; pause;;
     12) backup; pause;;
     13) apply; pause;;
     14) uninstall; pause;;
     16) reset_2fa; pause;;
-    15) echo "URL:  $(get_env PUBLIC_BASE_URL)/dashboard/"; echo "Port: $(get_env PORT)"; pause;;
+    15) echo "Panel: $(get_env PUBLIC_BASE_URL)/dashboard/  (port $(panel_port))"; [ -z "$(get_env SUB_PORT)" ] || echo "Sub:   $(get_env SUB_PUBLIC_BASE_URL)/sub/...  (port $(get_env SUB_PORT))"; pause;;
     0|q) exit 0;;
   esac
 done

@@ -50,6 +50,7 @@ async def _remote_links(user_id:int, token_version:int)->list[str]:
    if pid in amap: got=apply_aliases(got,amap[pid][1],amap[pid][0])
    return True, got
   except Exception as exc:
+   if len(_fetch_err)>2000: _fetch_err.clear()
    _fetch_err[user_id]=short_error(exc); log.warning('sub links fetch failed (user %s, panel %s): %s',user_id,pid,_fetch_err[user_id]); return False, []
  _fetch_err.pop(user_id,None)
  results=await asyncio.gather(*(one(r) for r in snapshot))
@@ -58,6 +59,10 @@ async def _remote_links(user_id:int, token_version:int)->list[str]:
   if cache_key in _cache: return _cache[cache_key][1]
  links=[link for _,group in results for link in group]
  if links or not snapshot:
+  if len(_cache)>1500:
+   t=time.monotonic()
+   for k in [k for k,v in _cache.items() if v[0]<=t]: _cache.pop(k,None)
+   while len(_cache)>1500: _cache.pop(next(iter(_cache)),None)
   _cache[cache_key]=(time.monotonic()+30,links)
   with SessionLocal() as db:
    db.merge(Setting(key=f'subcache:{user_id}:{token_version}',value={'links':links,'expires':now+30}))
@@ -88,7 +93,7 @@ def _wants_page(request:Request)->bool:
  ua=(request.headers.get('user-agent') or '').lower()
  return 'text/html' in (request.headers.get('accept') or '').lower() and ua.startswith('mozilla') and not any(k in ua for k in _APP_UA)
 def _public_base(request:Request)->str:
- base=(settings.public_base_url or '').rstrip('/')
+ base=settings.sub_base_url if settings.split_mode else (settings.public_base_url or '').rstrip('/')
  return base if base and 'localhost' not in base and '127.0.0.1' not in base else str(request.base_url).rstrip('/')
 def _qr_svg(text:str)->str:
  try:
