@@ -1,5 +1,6 @@
+import re
 from datetime import datetime, timezone
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -7,7 +8,7 @@ from sqlalchemy import func
 from app.core.security import require_sudo, hash_password, admin_state
 from app.core.crypto import encrypt_secret
 from app.db.models import AdminPanelAccess, Panel
-from app.db.models import Admin, User, AuditLog
+from app.db.models import Admin, User, AuditLog, Service
 from app.core.permissions import CATALOG, KEYS
 from app.db.session import get_db
 
@@ -24,7 +25,9 @@ class AdminCreate(BaseModel):
     permissions: dict = {}
 
 def _clean_perms(p):
-    if not isinstance(p,dict) or any(k not in KEYS for k in p): raise HTTPException(422, detail={'detail':'دسترسی نامعتبر است','code':'INVALID_PERMISSION'})
+    if not isinstance(p,dict): raise HTTPException(422, detail={'detail':'فیلد permissions باید شیء {کلید: true/false} باشد','code':'INVALID_PERMISSION','field':'permissions'})
+    bad=[k for k in p if k not in KEYS]
+    if bad: raise HTTPException(422, detail={'detail':f'کلید دسترسی نامعتبر: {", ".join(map(str,bad))}','code':'INVALID_PERMISSION','field':'permissions','invalid_keys':bad})
     return {k:bool(v) for k,v in p.items()}
 
 @router.get('/permissions')
@@ -37,11 +40,18 @@ def list_admins(_: Admin = Depends(require_sudo), db: Session = Depends(get_db))
 
 @router.post('')
 def create_admin(body: AdminCreate, actor: Admin = Depends(require_sudo), db: Session = Depends(get_db)):
-    if body.role not in ('admin','sudo'): raise HTTPException(422, detail={'detail':'نقش نامعتبر است','code':'INVALID_ROLE'})
+    if body.role not in ('admin','sudo'): raise HTTPException(422, detail={'detail':f'نقش «{body.role}» نامعتبر است؛ فقط admin یا sudo','code':'INVALID_ROLE','field':'role'})
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+', body.username): raise HTTPException(422, detail={'detail':'نام کاربری فقط می‌تواند شامل حروف انگلیسی، عدد و _ . - باشد','code':'INVALID_USERNAME','field':'username'})
+    missing=[i for i in body.allowed_services if not db.get(Service,i)]
+    if missing: raise HTTPException(422, detail={'detail':f'سرویس با این شناسه وجود ندارد: {missing}','code':'SERVICE_NOT_FOUND','field':'allowed_services'})
     if db.query(Admin).filter(func.lower(Admin.username)==body.username.lower()).first(): raise HTTPException(409, detail={'detail':'نام کاربری تکراری است','code':'USERNAME_EXISTS'})
     a=Admin(username=body.username,password_hash=hash_password(body.password),role=body.role,max_users=body.max_users,max_total_traffic=body.max_total_traffic,max_user_traffic=body.max_user_traffic,max_user_days=body.max_user_days,allowed_services=body.allowed_services,permissions=_clean_perms(body.permissions))
     db.add(a); db.flush(); db.add(AuditLog(actor_admin_id=actor.id,action='admin.create',object_type='admin',object_id=str(a.id),details={'username':a.username})); db.commit(); db.refresh(a)
-    return {'id':a.id,'username':a.username,'role':a.role}
+    warnings=[]
+    if a.role=='admin':
+        if not any(a.permissions.values()): warnings.append('هیچ دسترسی‌ای فعال نیست؛ این ادمین نمی‌تواند کاری انجام دهد')
+        if not a.allowed_services: warnings.append('هیچ سرویسی انتخاب نشده؛ این ادمین نمی‌تواند کاربر بسازد')
+    return {'id':a.id,'username':a.username,'role':a.role,'permissions_enabled':sum(1 for v in a.permissions.values() if v),'allowed_services':a.allowed_services,'warnings':warnings}
 
 @router.patch('/{admin_id}')
 def update_admin(admin_id:int, body:dict, actor:Admin=Depends(require_sudo), db:Session=Depends(get_db)):
@@ -67,7 +77,7 @@ def admin_users_status(admin_id:int, body:dict, actor:Admin=Depends(require_sudo
     status=body.get('status')
     if status not in ('active','disabled','limited','on_hold'): raise HTTPException(422,detail={'detail':'وضعیت نامعتبر است','code':'INVALID_STATUS'})
     users=db.query(User).filter(User.admin_id==admin_id).all()
-    for u in users: u.status=status; u.sub_token_version += 1
+    for u in users: u.status=status
     db.add(AuditLog(actor_admin_id=actor.id,action='admin.users_status',object_type='admin',object_id=str(admin_id),details={'status':status,'count':len(users)})); db.commit()
     return {'updated':len(users)}
 

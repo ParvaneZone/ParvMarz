@@ -1,5 +1,4 @@
-from datetime import datetime, timezone
-from app.db.models import Panel, User, UserPanelAccount, SyncTask
+from app.db.models import User, UserPanelAccount, SyncTask
 from app.db.session import SessionLocal
 
 def reconcile()->dict:

@@ -96,6 +96,9 @@ class MarzbanDriver(PanelDriver):
     async def list_inbounds(self) -> list[dict[str, Any]]:
         return normalize_inbounds(await self._request("GET", "/api/inbounds"))
 
+    async def list_hosts(self) -> list[dict[str, Any]]:
+        return await self._request("GET", "/api/hosts")
+
     async def list_groups(self) -> list[dict[str, Any]]:
         # Marzban access is selected with protocol -> inbound-tag mappings, not groups.
         return []

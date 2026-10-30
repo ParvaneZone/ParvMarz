@@ -59,3 +59,22 @@ body{font-family:Vazirmatn,Tahoma,"Segoe UI",system-ui,sans-serif;font-size:15px
 .live-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 0 rgba(34,197,94,.6);animation:livepulse 1.6s ease-out infinite}
 .live-dot.off{background:#ef4444;animation:none}
 @keyframes livepulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,.55)}100%{box-shadow:0 0 0 8px rgba(34,197,94,0)}}
+
+/* ---------- scroll trigger ---------- */
+[data-rv=""]{opacity:0;transform:translateY(22px)}
+[data-rv="in"]{opacity:1;transform:none;transition:opacity .55s ease,transform .55s cubic-bezier(.2,.7,.2,1)}
+.hdr{position:sticky;top:0;z-index:20;padding:10px 0;margin-top:-10px;background:var(--bg);transition:box-shadow .25s,border-color .25s;border-bottom:1px solid transparent}
+.hdr[data-stuck]{border-bottom-color:var(--border);box-shadow:0 6px 18px rgba(0,0,0,.12)}
+
+/* ---------- typography hierarchy ---------- */
+.shell h1,.shell h2{font-weight:800;color:var(--fg);letter-spacing:normal;line-height:1.4}
+.shell h3,.shell h4{font-weight:700;color:var(--fg);letter-spacing:normal;line-height:1.5}
+.muted{color:var(--muted);font-weight:400;font-size:13.5px}
+.shell label.chakra-form__label{font-size:13px;font-weight:600;color:var(--muted);margin-bottom:6px}
+.shell .chakra-badge{font-weight:600;letter-spacing:normal;text-transform:none}
+.shell .chakra-button{font-weight:600}
+.stat .chakra-stat__label{font-weight:500}
+.panel table td{font-size:14px}
+.menu-sec{font-size:12px;font-weight:700;color:var(--muted);opacity:.8;margin:0 4px 6px;letter-spacing:normal}
+.guide .chakra-accordion__item{border-color:var(--border)}
+.guide .chakra-accordion__button:hover{background:var(--soft)}

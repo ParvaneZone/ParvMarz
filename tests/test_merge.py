@@ -21,7 +21,8 @@ def _links():
 
 
 def test_all_formats_render():
-    import json, yaml
+    import json
+    import yaml
     from app.subscription.merge import to_clash, to_singbox, to_v2ray_json
     proxies = deduplicate_links(_links())
     assert len(proxies) == 4

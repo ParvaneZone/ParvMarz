@@ -5,7 +5,7 @@ from urllib.parse import quote, urljoin, urlparse
 
 import httpx
 
-from app.drivers.base import DEFAULT_CAPABILITIES, AccessPlan, PanelDriver, RemoteOutcomeUnknown, normalize_inbounds
+from app.drivers.base import DEFAULT_CAPABILITIES, PanelDriver, RemoteOutcomeUnknown, normalize_inbounds
 
 _USER_KEYS = {
     "data_limit", "expire", "status", "note", "data_limit_reset_strategy", "service_id",

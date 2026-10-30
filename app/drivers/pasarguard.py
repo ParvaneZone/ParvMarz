@@ -40,12 +40,12 @@ class PasarGuardDriver(PanelDriver):
         self._tok = ""
         self.capabilities = {
             **DEFAULT_CAPABILITIES,
-            "inbounds.read": True, "groups.read": True, "templates.read": True,
+            "inbounds.read": True, "groups.read": True,
             "templates.create_from": True, "users.create": True,
             "users.modify": True, "users.delete": True, "users.read": True,
             "users.list": True, "users.status": True, "users.reset_usage": True,
             "users.revoke_sub": True, "users.usage": True, "users.sub_links": True,
-            "users.bulk": True, "templates.read": False, "templates.create_from": True,
+            "users.bulk": True, "templates.read": False,
             # System/admin stats routes vary by release and remain disabled until schema is confirmed.
         }
 
@@ -159,6 +159,9 @@ class PasarGuardDriver(PanelDriver):
             except Exception:
                 pass
         return rows
+
+    async def list_hosts(self) -> list[dict[str, Any]]:
+        return await self._request("GET", "/api/hosts")
 
     async def list_groups(self) -> list[dict[str, Any]]:
         data = None
