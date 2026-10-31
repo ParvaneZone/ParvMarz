@@ -1,0 +1,133 @@
+:root{
+  --bg:#f3f5f9;--card:#ffffff;--soft:#f1f5f9;--border:#d5dde8;--input-border:#8fa0b5;
+  --fg:#111c2e;--muted:#475569;
+}
+body[data-theme="dark"]{
+  --bg:#0f172a;--card:#1e293b;--soft:#0f172a;--border:#3b4a61;--input-border:#64748b;
+  --fg:#f1f5f9;--muted:#b4c0d3;
+}
+body[data-theme="oled"]{
+  --bg:#000;--card:#0b0b0c;--soft:#000;--border:#2e2e33;--input-border:#6b7280;
+  --fg:#f5f5f5;--muted:#b0b0b8;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg)}
+body{font-family:Vazirmatn,Tahoma,"Segoe UI",system-ui,sans-serif;font-size:15px;line-height:1.7;-webkit-text-size-adjust:100%}
+
+.shell{min-height:100vh;max-width:1600px;margin:0 auto;padding:28px;background:transparent;color:var(--fg);position:relative;z-index:1}
+.muted{color:var(--muted)}
+.ltr{direction:ltr;text-align:left;word-break:break-all}
+
+.stat,.panel,.login{background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:16px;padding:18px}
+.panel{padding:22px;overflow-x:visible;min-width:0}
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+.login{max-width:430px;margin:10vh auto;padding:30px}
+.create-form{padding:18px;background:var(--soft);border:1px solid var(--border);border-radius:14px;margin-bottom:20px}
+.tabs{border-bottom:1px solid var(--border);padding-bottom:14px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.tabs::-webkit-scrollbar{display:none}
+
+.stat .chakra-stat__label{color:var(--muted);font-size:14px}
+.stat .chakra-stat__number{color:var(--fg);font-size:28px;font-weight:700}
+
+.shell input:not([type=checkbox]),.shell select,.shell textarea{border-color:var(--input-border);color:var(--fg)}
+.shell ::placeholder{color:var(--muted);opacity:.85}
+.shell select option{background:var(--card);color:var(--fg)}
+
+/* Chakra upper-cases and letter-spaces table headings; that breaks Persian letter joining. */
+.panel table th{text-transform:none;letter-spacing:normal;font-size:13px;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border)}
+.panel table td{border-bottom:1px solid var(--border);color:var(--fg);vertical-align:middle}
+.panel table tr:last-child td{border-bottom:0}
+
+.hdr button,.tabs button{min-height:44px}
+.shell button:focus-visible,.shell input:focus-visible,.shell select:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
+
+@media(max-width:600px){
+  .shell{padding:14px}
+  .panel{padding:14px}
+  .stat{padding:14px}
+  .login{margin:5vh auto;padding:20px}
+  .tscroll table{min-width:640px}
+  .hdr{gap:8px}
+  .hdr button{padding-inline:10px}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ---------- icons & live system ---------- */
+.icon{flex:none;vertical-align:middle}
+.spark{flex:none;direction:ltr;opacity:.95}
+.live-num{font-variant-numeric:tabular-nums;min-width:7ch}
+.live-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 0 rgba(34,197,94,.6);animation:livepulse 1.6s ease-out infinite}
+.live-dot.off{background:#ef4444;animation:none}
+@keyframes livepulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,.55)}100%{box-shadow:0 0 0 8px rgba(34,197,94,0)}}
+
+/* ---------- scroll trigger (cheap: opacity + small translate, no blur) ---------- */
+[data-rv=""]{opacity:0;transform:translateY(16px)}
+[data-rv="in"]{opacity:1;transform:none;transition:opacity .45s ease var(--rv-d,0ms),transform .55s cubic-bezier(.2,.7,.2,1) var(--rv-d,0ms)}
+[data-rv="done"]{opacity:1;transform:none}
+.hdr{position:sticky;top:0;z-index:20;padding:10px 0;margin-top:-10px;background:color-mix(in srgb,var(--bg) 93%,transparent);transition:box-shadow .25s,border-color .25s;border-bottom:1px solid transparent}
+.hdr[data-stuck]{border-bottom-color:var(--border);box-shadow:0 6px 18px rgba(0,0,0,.12)}
+
+/* ---------- typography hierarchy ---------- */
+.shell h1,.shell h2{font-weight:800;color:var(--fg);letter-spacing:normal;line-height:1.4}
+.shell h3,.shell h4{font-weight:700;color:var(--fg);letter-spacing:normal;line-height:1.5}
+.muted{color:var(--muted);font-weight:400;font-size:13.5px}
+.shell label.chakra-form__label{font-size:13px;font-weight:600;color:var(--muted);margin-bottom:6px}
+.shell .chakra-badge{font-weight:600;letter-spacing:normal;text-transform:none}
+.shell .chakra-button{font-weight:600}
+.stat .chakra-stat__label{font-weight:500}
+.panel table td{font-size:14px}
+.menu-sec{font-size:12px;font-weight:700;color:var(--muted);opacity:.8;margin:0 4px 6px;letter-spacing:normal}
+.guide .chakra-accordion__item{border-color:var(--border)}
+.guide .chakra-accordion__button:hover{background:var(--soft)}
+
+/* ---------- scroll-driven SVG background (compositor layers) ---------- */
+@property --c1{syntax:"<color>";inherits:true;initial-value:#3b82f6}
+@property --c2{syntax:"<color>";inherits:true;initial-value:#22d3ee}
+@property --c3{syntax:"<color>";inherits:true;initial-value:#a78bfa}
+.bg-scene{--c1:var(--accent,#3b82f6);--c2:#22d3ee;--c3:#a78bfa;--sx:0px;position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;background:var(--bg);contain:strict;transition:--c1 1s ease,--c2 1s ease,--c3 1s ease}
+/* one palette + horizontal offset per page: the scene morphs when you switch pages */
+.bg-scene[data-v="1"]{--c1:#a78bfa;--c2:var(--accent,#3b82f6);--c3:#22d3ee;--sx:-70px}
+.bg-scene[data-v="2"]{--c1:#22d3ee;--c2:#a78bfa;--c3:var(--accent,#3b82f6);--sx:60px}
+.bg-scene[data-v="3"]{--c1:#34d399;--c2:var(--accent,#3b82f6);--c3:#f472b6;--sx:-110px}
+.bg-scene[data-v="4"]{--c1:#f59e0b;--c2:#a78bfa;--c3:var(--accent,#3b82f6);--sx:100px}
+.bg-layer{position:absolute;inset:0;width:100%;height:100%;overflow:visible;will-change:transform;translate:calc(var(--d,0) * var(--sx)) 0;transition:translate 1s cubic-bezier(.2,.7,.2,1)}
+.bg-drift{position:absolute;inset:0;animation:bgdrift 16s ease-in-out infinite alternate}
+.bg-scene[data-paused] .bg-drift{animation-play-state:paused}
+.bg-layer.blobs{opacity:1}
+.bg-layer.blobs.b{opacity:.3}
+body[data-theme="dark"] .bg-layer.blobs{filter:none;opacity:.85}
+.bg-dot{fill:var(--c1);opacity:.4}
+.bg-ring circle{fill:none;stroke:var(--c1);stroke-width:1.8;opacity:.45}
+[data-spin]{transform-box:fill-box;transform-origin:center}
+.bg-edge{stroke:var(--c2);stroke-width:1.6;opacity:.35}
+.bg-node{fill:var(--c2);opacity:.6}
+.bg-wave{fill:none;stroke:var(--c1);stroke-width:2.5;stroke-linecap:round;opacity:.55;stroke-dasharray:1;stroke-dashoffset:1}
+.bg-shape{fill:none;stroke:var(--c3);stroke-width:2;stroke-linejoin:round;opacity:.55}
+.bg-shape.fill{fill:var(--c3);fill-opacity:.2}
+.bg-plus{fill:none;stroke:var(--c2);stroke-width:2.5;stroke-linecap:round;opacity:.55}
+@keyframes bgdrift{from{translate:0 0}to{translate:14px -22px}}
+
+/* cards: solid-ish (no backdrop blur: that was the main scroll-jank source) */
+.panel,.stat{background:color-mix(in srgb,var(--card) 93%,transparent)}
+.create-form{background:color-mix(in srgb,var(--soft) 94%,transparent)}
+
+/* brand mark */
+.brand-logo{display:inline-block;flex:none;background:#2f3b4a;-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center}
+body[data-theme="dark"] .brand-logo,body[data-theme="oled"] .brand-logo{background:#e5e9f0}
+
+/* reading progress + back to top */
+.scroll-progress{position:fixed;top:0;inset-inline:0;height:3px;z-index:60;transform:scaleX(0);transform-origin:left;background:linear-gradient(90deg,var(--accent,#3b82f6),#22d3ee,#a78bfa);pointer-events:none}
+html[dir="rtl"] .scroll-progress{transform-origin:right}
+.to-top{position:fixed;bottom:22px;inset-inline-end:22px;z-index:50;width:44px;height:44px;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--fg);font-size:20px;line-height:1;cursor:pointer;box-shadow:0 8px 22px rgba(0,0,0,.18);opacity:0;transform:translateY(16px) scale(.9);pointer-events:none;transition:opacity .3s,transform .3s}
+.to-top[data-show]{opacity:1;transform:none;pointer-events:auto}
+.to-top:hover{border-color:var(--accent,#3b82f6)}
+.to-top:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
+@media(max-width:600px){.to-top{bottom:14px;inset-inline-end:14px}.bg-layer.hv,.bg-layer.blobs.b{display:none}.bg-drift{animation:none}}
+@media(prefers-reduced-motion:reduce){.scroll-progress{display:none}.bg-drift{animation:none!important}.bg-layer{transition:none}.to-top{transition:none}}
+
+/* ---------- action buttons: larger, evenly spaced ---------- */
+.act-grp{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.act-grp>*{margin:0!important}
+.act-grp button,.shell td button.chakra-button{min-height:38px;min-width:76px;padding-inline:14px;font-size:14px;border-radius:10px;white-space:nowrap}
+.panel table td:last-child{min-width:260px}
+@media(max-width:600px){.act-grp{gap:6px}.act-grp button{flex:1 1 calc(50% - 6px);min-width:0}}

@@ -1,0 +1,15 @@
+*.py[cod]
+*.tsbuildinfo
+.deployed-commit
+.env
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+data/
+dist/
+node_modules/
+repo/
+certs/*
+!certs/.gitkeep
