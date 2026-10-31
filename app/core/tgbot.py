@@ -1,9 +1,16 @@
-"""Telegram bot (long-polling via getUpdates). An admin links a chat with a one-time code created in the dashboard;
-an unlinked chat gets nothing. Linked admins only ever receive their own events (see notify.py)."""
+"""Telegram bot. The panel wires the bot up by itself: run_bot() (started with the app) registers the webhook and
+re-checks it every few minutes; if no public HTTPS URL is available it falls back to long-polling (getUpdates), so
+nobody ever has to call setWebhook by hand.
+
+An admin is connected either by the sudo typing the admin's numeric Telegram ID in the admin form, or by the admin
+opening a link code from the dashboard. Neither expires. Linked admins only ever receive their own events (notify.py)."""
+import asyncio
 import hashlib
 import hmac
 import logging
+import re
 import secrets
+from urllib.parse import urlsplit
 import httpx
 from sqlalchemy import func
 from app.config import settings
@@ -97,16 +104,81 @@ def process_update(up: dict) -> dict | None:
     return {"method": "sendMessage", "chat_id": chat["id"], "text": reply} if reply else None
 
 
-async def set_webhook() -> bool:
-    """Register this panel's webhook with Telegram (called on startup). Needs a public HTTPS PUBLIC_BASE_URL."""
+_TG_ID = re.compile(r"-?\d{5,20}")
+
+
+def clean_tg_id(v) -> str | None:
+    """Numeric Telegram ID typed in a form -> normalized string; empty -> None; anything else -> ValueError."""
+    v = str(v if v is not None else "").strip().translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789"))
+    if not v: return None
+    if not _TG_ID.fullmatch(v): raise ValueError("آیدی عددی تلگرام نامعتبر است (فقط عدد، مثلاً 123456789)")
+    return v
+
+
+def send_text_sync(chat_id: str, text: str) -> bool:
+    """Best-effort single message (used to confirm a freshly saved ID). False if Telegram refused (e.g. user never pressed Start)."""
     if not settings.telegram_bot_token: return False
-    url = settings.public_base_url.rstrip("/") + "/api/telegram/webhook"
     try:
-        async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.post(f"https://api.telegram.org/bot{settings.telegram_bot_token}/setWebhook",
-                             json={"url": url, "secret_token": webhook_secret(), "allowed_updates": ["message"], "max_connections": 5})
-        ok = bool(r.json().get("ok"))
-        if not ok: log.warning("setWebhook rejected (needs public HTTPS on port 443/80/88/8443): %s", str(r.json().get("description"))[:120])
-        return ok
+        r = httpx.post(f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage",
+                       json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True}, timeout=8)
+        return bool(r.json().get("ok"))
     except Exception as exc:
-        log.warning("setWebhook failed: %s", type(exc).__name__); return False
+        log.warning("sendMessage failed: %s", type(exc).__name__); return False
+
+
+def webhook_url() -> str | None:
+    """Public HTTPS URL Telegram should call, or None when this panel is not reachable over HTTPS (-> polling)."""
+    base = settings.public_base_url.rstrip("/")
+    if not base.startswith("https://") and settings.panel_domain: base = "https://" + settings.panel_domain
+    if not base.startswith("https://"): return None
+    if (urlsplit(base).port or 443) not in (443, 80, 88, 8443): return None
+    return base + "/api/telegram/webhook"
+
+
+async def ensure_webhook() -> str:
+    """Make Telegram point at this panel. Returns 'webhook' (registered) or 'polling' (no usable public HTTPS URL)."""
+    url = webhook_url(); api = f"https://api.telegram.org/bot{settings.telegram_bot_token}"
+    async with httpx.AsyncClient(timeout=15) as c:
+        if not url:
+            await c.post(f"{api}/deleteWebhook", json={"drop_pending_updates": False}); return "polling"
+        info = (await c.get(f"{api}/getWebhookInfo")).json().get("result") or {}
+        if info.get("url") == url and not info.get("last_error_message"): return "webhook"
+        r = await c.post(f"{api}/setWebhook", json={"url": url, "secret_token": webhook_secret(),
+                                                    "allowed_updates": ["message"], "max_connections": 5})
+        ok = bool(r.json().get("ok"))
+        if not ok: log.warning("setWebhook rejected, using polling: %s", str(r.json().get("description"))[:120])
+        return "webhook" if ok else "polling"
+
+
+async def _poll(seconds: int) -> None:
+    """Long-polling for a while (then the supervisor re-checks whether a webhook became possible)."""
+    api = f"https://api.telegram.org/bot{settings.telegram_bot_token}"; offset = 0
+    loop = asyncio.get_running_loop(); end = loop.time() + seconds
+    async with httpx.AsyncClient(timeout=40) as c:
+        while loop.time() < end:
+            r = await c.post(f"{api}/getUpdates", json={"offset": offset, "timeout": 25, "allowed_updates": ["message"]})
+            data = r.json()
+            if not data.get("ok"): raise RuntimeError("getUpdates rejected")
+            for up in data.get("result") or []:
+                offset = max(offset, int(up.get("update_id", 0)) + 1)
+                reply = await asyncio.to_thread(process_update, up)
+                if reply: await c.post(f"{api}/{reply.pop('method')}", json=reply)
+
+
+async def run_bot() -> None:
+    """Supervisor started with the app: never raises, retries with backoff, and re-checks the webhook periodically."""
+    if not settings.telegram_bot_token: return
+    delay = 5
+    while True:
+        try:
+            if await ensure_webhook() == "webhook": await asyncio.sleep(300)
+            else: await _poll(600)
+            delay = 5
+        except asyncio.CancelledError: raise
+        except Exception as exc:
+            log.warning("telegram bot loop: %s (retry in %ss)", type(exc).__name__, delay)
+            await asyncio.sleep(delay); delay = min(delay * 2, 300)
+
+
+async def set_webhook() -> bool:  # kept for compatibility
+    return (await ensure_webhook()) == "webhook"

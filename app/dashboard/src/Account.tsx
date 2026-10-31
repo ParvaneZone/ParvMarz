@@ -111,17 +111,23 @@ function TelegramCard({ c }: { c: Ctx }) {
   const { api, t, toast } = c; const qc = useQueryClient();
   const q = useQuery({ queryKey: ["tg"], queryFn: () => api("/api/admin/telegram") });
   const [lnk, setLnk] = React.useState<{ code: string; url: string | null; bot: string | null } | null>(null);
+  const [tid, setTid] = React.useState("");
+  React.useEffect(() => { if (q.data) setTid(q.data.telegram_id || ""); }, [q.data?.telegram_id]);
   const run = async (fn: () => Promise<void>) => { try { await fn(); await qc.invalidateQueries({ queryKey: ["tg"] }); } catch (e) { toast({ title: msg(e), status: "error" }); } };
   if (!q.data?.enabled) return null;
   return <Box className="panel" mb={4}>
     <HStack justify="space-between" mb={2}><Heading size="md">{t("ربات تلگرام", "Telegram bot")}</Heading><Badge colorScheme={q.data.linked ? "green" : "gray"}>{q.data.linked ? t("متصل", "Linked") : t("متصل نیست", "Not linked")}</Badge></HStack>
     <Text className="muted" mb={3}>{t("اعلان ورود، اتمام حجم/زمان و خطاها فقط برای اکانت خودتان ارسال می‌شود.", "Login, quota and expiry alerts are sent for your own account only.")}</Text>
+    <Text fontSize="sm" mb={1}>{t("آیدی عددی تلگرام", "Telegram numeric ID")}</Text>
+    <HStack mb={3}><Input className="ltr" inputMode="numeric" placeholder="123456789" value={tid} onChange={e => setTid(e.target.value)} />
+      <Button colorScheme="blue" onClick={() => void run(async () => { const r: any = await api("/api/admin/telegram", J("PUT", { telegram_id: tid })); if (r?.telegram_sent === false) toast({ title: t("ذخیره شد ولی پیام تست نرسید؛ یک‌بار ربات را Start کنید.", "Saved, but the test message failed; press Start on the bot once."), status: "warning" }); })}>{t("ذخیره", "Save")}</Button></HStack>
+    <Text className="muted" mb={2} fontSize="sm">{t("یا با لینک اتصال (بدون تاریخ انقضا):", "Or with a link (never expires):")}</Text>
     <HStack className="act-grp" spacing={0}>
       <Button colorScheme="blue" onClick={() => void run(async () => setLnk(await api("/api/admin/telegram/link", J("POST"))))}>{q.data.linked ? t("اتصال مجدد", "Re-link") : t("اتصال", "Link")}</Button>
       {q.data.linked && <Button colorScheme="red" variant="outline" onClick={() => void run(async () => { await api("/api/admin/telegram", J("DELETE")); setLnk(null); })}>{t("قطع اتصال", "Unlink")}</Button>}
     </HStack>
     {lnk && <Box mt={3}>{lnk.url ? <Button as="a" href={lnk.url} target="_blank" rel="noopener noreferrer" colorScheme="green">{t("باز کردن در تلگرام", "Open in Telegram")}</Button> : <Text>{t("به ربات این پیام را بفرستید:", "Send this to the bot:")} <Code>/start {lnk.code}</Code></Text>}
-      <Text className="muted" mt={2}>{t("لینک یک‌بارمصرف است.", "One-time link.")}</Text></Box>}
+      <Text className="muted" mt={2}>{t("بعد از اولین استفاده باطل می‌شود؛ تا آن موقع محدودیت زمانی ندارد.", "Valid until first use; no time limit.")}</Text></Box>}
   </Box>;
 }
 export function AccountTab({ c, prefs, setPrefs }: { c: Ctx; prefs: Prefs; setPrefs: (p: Prefs) => void }) {

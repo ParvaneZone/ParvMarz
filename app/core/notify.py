@@ -17,10 +17,11 @@ _TITLES = {
     "user.expiring": "⏰ اشتراک کاربر نزدیک انقضاست", "panel.down": "🔴 پنل قطع شد", "panel.up": "🟢 پنل وصل شد",
     "admin.login": "🔐 ورود ادمین", "admin.login_failed": "⚠️ ورود ناموفق به اکانت ادمین", "admin.locked": "🚫 قفل شدن ورود (تلاش زیاد)",
     "admin.expired": "⌛ اکانت ادمین منقضی شد", "admin.expiring": "⏰ اکانت ادمین نزدیک انقضاست", "admin.traffic_full": "⛔ حجم کل ادمین تمام شد",
+    "admin.updated": "✏️ تغییر در اکانت شما", "admin.recharged": "🔋 اکانت شما شارژ شد", "admin.disabled": "🚫 اکانت شما غیرفعال شد", "admin.enabled": "✅ اکانت شما فعال شد",
     "error.critical": "🚨 خطای مهم سیستم", "sync.failed": "❗ همگام‌سازی با پنل ناموفق ماند", "backup.failed": "❗ پشتیبان‌گیری ناموفق بود",
 }
 _LABELS = {"username": "نام کاربری", "ip": "آیپی", "time": "زمان", "reason": "علت", "panel": "پنل", "error": "خطا", "expire": "انقضا",
-           "path": "مسیر", "method": "متد", "action": "عملیات", "attempts": "تعداد تلاش", "used": "مصرف", "limit": "سقف", "user": "کاربر"}
+           "path": "مسیر", "method": "متد", "action": "عملیات", "attempts": "تعداد تلاش", "used": "مصرف", "limit": "سقف", "user": "کاربر", "changes": "تغییرات", "add_days": "روز اضافه‌شده", "add_traffic": "حجم اضافه‌شده", "by": "توسط"}
 SUDO_ONLY = {"panel.down", "panel.up", "error.critical", "sync.failed", "backup.failed"}
 _err_seen: dict[str, float] = {}
 
@@ -44,8 +45,9 @@ def format_message(event: str, data: dict) -> str:
 
 async def tg_send(c: httpx.AsyncClient, chat, text: str) -> None:
     try:
-        await c.post(f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage",
-                     json={"chat_id": chat, "text": text[:3500], "disable_web_page_preview": True})
+        r = await c.post(f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage",
+                         json={"chat_id": chat, "text": text[:3500], "disable_web_page_preview": True})
+        if r.status_code >= 400: log.warning("telegram refused (%s): chat must press Start on the bot first", r.status_code)
     except Exception as exc:
         log.warning("telegram failed: %s", type(exc).__name__)
 

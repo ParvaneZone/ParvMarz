@@ -211,15 +211,16 @@ export function AdminsTab(c: Ctx) {
   const q = useQuery({ queryKey: ["admins"], queryFn: () => api("/api/admins") });
   const cat = useQuery({ queryKey: ["perm-catalog"], queryFn: () => api("/api/admins/permissions") });
   const sv = useQuery({ queryKey: ["services"], queryFn: () => api("/api/services") });
-  const empty = { username: "", password: "", role: "admin", max_users: "", max_total_gb: "", max_user_gb: "", max_user_days: "", expire: "", services: [] as number[], perms: {} as Record<string, boolean> };
+  const empty = { username: "", password: "", role: "admin", max_users: "", max_total_gb: "", max_user_gb: "", max_user_days: "", expire: "", telegram_id: "", services: [] as number[], perms: {} as Record<string, boolean> };
   const [f, setF] = React.useState<any>(null); const [editId, setEditId] = React.useState<number | null>(null);
   const set = (k: string, v: any) => setF({ ...f, [k]: v });
   const [pw, setPw] = React.useState({ current_password: "", new_password: "" });
   const allKeys: string[] = (cat.data || []).flatMap((g: any) => g.items.map((i: any) => i.key));
   const allSv: number[] = (sv.data || []).map((s: any) => s.id);
   const toggle = (arr: any[], v: any, on: boolean) => (on ? [...arr, v] : arr.filter(x => x !== v));
-  const limits = () => ({ max_users: num(f.max_users), max_total_traffic: fromGB(f.max_total_gb), max_user_traffic: fromGB(f.max_user_gb), max_user_days: num(f.max_user_days), expire: f.expire ? new Date(f.expire + "T23:59:59").toISOString() : null, allowed_services: f.services, permissions: Object.fromEntries(allKeys.map(k => [k, !!f.perms[k]])) });
+  const limits = () => ({ telegram_id: (f.telegram_id || "").trim() || null, max_users: num(f.max_users), max_total_traffic: fromGB(f.max_total_gb), max_user_traffic: fromGB(f.max_user_gb), max_user_days: num(f.max_user_days), expire: f.expire ? new Date(f.expire + "T23:59:59").toISOString() : null, allowed_services: f.services, permissions: Object.fromEntries(allKeys.map(k => [k, !!f.perms[k]])) });
   const check = (): string => {
+    if ((f.telegram_id || "").trim() && !/^-?\d{5,20}$/.test(f.telegram_id.trim())) return t("آیدی عددی تلگرام فقط باید عدد باشد (مثلاً 123456789)", "Telegram ID must be numeric (e.g. 123456789)");
     if (editId) return "";
     if (!/^[A-Za-z0-9_.-]{3,80}$/.test(f.username)) return t("نام کاربری: حداقل ۳ کاراکتر و فقط حروف انگلیسی/عدد/_ . -", "Username: min 3 chars, letters/digits/_ . - only");
     if ((f.password || "").length < 12) return t(`رمز: حداقل ۱۲ کاراکتر (الان ${(f.password || "").length})`, `Password: min 12 chars (now ${(f.password || "").length})`);
@@ -229,11 +230,13 @@ export function AdminsTab(c: Ctx) {
   };
   const save = () => { const bad = check(); if (bad) { c.toast({ title: bad, status: "warning" }); return; } doSave(); };
   const doSave = () => editId
-    ? run(`/api/admins/${editId}`, J("PATCH", limits()), () => { setF(null); setEditId(null); })
+    ? run(`/api/admins/${editId}`, J("PATCH", limits()), () => { setF(null); setEditId(null); }).then((r: any) => {
+        if (r?.telegram_sent === false) c.toast({ title: t("آیدی ذخیره شد ولی پیام تست نرسید", "Saved, but the test message was not delivered"), description: t("ادمین باید یک‌بار ربات را در تلگرام Start کند.", "The admin must press Start on the bot once."), status: "warning", duration: 12000, isClosable: true });
+      })
     : run("/api/admins", J("POST", { username: f.username, password: f.password, role: f.role, ...limits() }), () => setF(null)).then((r: any) => {
         if (r?.warnings?.length) c.toast({ title: t("ادمین ساخته شد، ولی:", "Admin created, but:"), description: r.warnings.join("\n"), status: "warning", duration: 12000, isClosable: true });
       });
-  const edit = (a: any) => { setEditId(a.id); setF({ ...empty, username: a.username, role: a.role, max_users: a.max_users ?? "", max_total_gb: toGB(a.max_total_traffic), max_user_gb: toGB(a.max_user_traffic), max_user_days: a.max_user_days ?? "", expire: a.expire ? a.expire.slice(0, 10) : "", services: a.allowed_services || [], perms: Object.keys(a.permissions || {}).length ? a.permissions : Object.fromEntries(allKeys.map(k => [k, true])) }); };
+  const edit = (a: any) => { setEditId(a.id); setF({ ...empty, username: a.username, role: a.role, max_users: a.max_users ?? "", max_total_gb: toGB(a.max_total_traffic), max_user_gb: toGB(a.max_user_traffic), max_user_days: a.max_user_days ?? "", expire: a.expire ? a.expire.slice(0, 10) : "", telegram_id: a.telegram_id || "", services: a.allowed_services || [], perms: Object.keys(a.permissions || {}).length ? a.permissions : Object.fromEntries(allKeys.map(k => [k, true])) }); };
   const isAdmin = f?.role === "admin";
   return <Box className="panel">
     <HStack justify="space-between" mb={4}><Heading size="md">{t("ادمین‌ها", "Admins")}</Heading><Button size="md" colorScheme="blue" onClick={() => { setEditId(null); setF(empty); }}>{t("ادمین جدید", "New admin")}</Button></HStack>
@@ -242,6 +245,7 @@ export function AdminsTab(c: Ctx) {
         <F label={t("نام کاربری", "Username")}><Input className="ltr" isDisabled={!!editId} value={f.username} onChange={e => set("username", e.target.value)} /></F>
         {!editId && <F label={t("رمز عبور (حداقل ۱۲؛ حرف کوچک و بزرگ، عدد و نماد $#@?!)", "Password (min 12: upper, lower, digit, symbol $#@?!)")}><PwField t={t} value={f.password} onChange={v => set("password", v)} /></F>}
         {!editId && <F label={t("نقش", "Role")}><Select value={f.role} onChange={e => set("role", e.target.value)}><option value="admin">{t("ادمین (دسترسی محدود)", "Admin (limited)")}</option><option value="sudo">{t("مدیر اصلی (همه دسترسی‌ها)", "Sudo (full access)")}</option></Select></F>}
+        <F label={t("آیدی عددی تلگرام (اختیاری)", "Telegram numeric ID (optional)")}><Input className="ltr" inputMode="numeric" placeholder="123456789" value={f.telegram_id} onChange={e => set("telegram_id", e.target.value)} /><Text fontSize="xs" className="muted" mt={1}>{t("اعلان‌ها و تغییرات همین ادمین به این آیدی در ربات ارسال می‌شود؛ ادمین باید یک‌بار ربات را Start کرده باشد. آیدی را از ربات‌هایی مثل @userinfobot می‌توان گرفت.", "This admin's alerts and changes are sent to this ID. The admin must press Start on the bot once.")}</Text></F>
       </SimpleGrid>
       {isAdmin && <>
         <Heading size="sm" mt={5} mb={2}>{t("دسترسی‌ها", "Permissions")}</Heading>
@@ -260,7 +264,7 @@ export function AdminsTab(c: Ctx) {
         </SimpleGrid></>}
       <HStack mt={4}><Button colorScheme="blue" onClick={save}>{editId ? t("ذخیره", "Save") : t("ایجاد", "Create")}</Button><Button onClick={() => { setF(null); setEditId(null); }}>{t("انصراف", "Cancel")}</Button></HStack></Box>}
     <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>ID</Th><Th>{t("نام کاربری", "Username")}</Th><Th>{t("نقش", "Role")}</Th><Th>{t("سرویس‌ها", "Services")}</Th><Th>{t("وضعیت", "Status")}</Th><Th>{t("عملیات", "Actions")}</Th></Tr></Thead>
-      <Tbody>{(q.data || []).map((a: any) => <Tr key={a.id}><Td>{a.id}</Td><Td>{a.username}</Td><Td>{a.role === "sudo" ? t("مدیر اصلی", "Sudo") : t("ادمین", "Admin")}</Td><Td>{a.role === "sudo" ? t("همه", "All") : (a.allowed_services || []).map((id: number) => (sv.data || []).find((s: any) => s.id === id)?.display_name ?? id).join("، ") || "—"}</Td><Td><Badge colorScheme={a.state === "active" ? "green" : a.state === "disabled" ? "red" : "orange"}>{({ active: t("فعال", "on"), disabled: t("غیرفعال", "off"), expired: t("زمان تمام", "expired"), traffic_exhausted: t("حجم تمام", "no traffic") } as any)[a.state] ?? a.state}</Badge>{a.role !== "sudo" && <Text fontSize="xs" className="ltr">{(a.used_traffic / GB).toFixed(1)}/{a.max_total_traffic == null ? "∞" : (a.max_total_traffic / GB).toFixed(0)} GB{a.expire ? " · " + a.expire.slice(0, 10) : ""}</Text>}</Td>
+      <Tbody>{(q.data || []).map((a: any) => <Tr key={a.id}><Td>{a.id}</Td><Td>{a.username}{a.telegram_id && <Text fontSize="xs" className="ltr muted">TG {a.telegram_id}</Text>}</Td><Td>{a.role === "sudo" ? t("مدیر اصلی", "Sudo") : t("ادمین", "Admin")}</Td><Td>{a.role === "sudo" ? t("همه", "All") : (a.allowed_services || []).map((id: number) => (sv.data || []).find((s: any) => s.id === id)?.display_name ?? id).join("، ") || "—"}</Td><Td><Badge colorScheme={a.state === "active" ? "green" : a.state === "disabled" ? "red" : "orange"}>{({ active: t("فعال", "on"), disabled: t("غیرفعال", "off"), expired: t("زمان تمام", "expired"), traffic_exhausted: t("حجم تمام", "no traffic") } as any)[a.state] ?? a.state}</Badge>{a.role !== "sudo" && <Text fontSize="xs" className="ltr">{(a.used_traffic / GB).toFixed(1)}/{a.max_total_traffic == null ? "∞" : (a.max_total_traffic / GB).toFixed(0)} GB{a.expire ? " · " + a.expire.slice(0, 10) : ""}</Text>}</Td>
         <Td><HStack className="act-grp" flexWrap="wrap" spacing={0}>
           {a.role !== "sudo" && <Button size="sm" colorScheme="blue" onClick={() => edit(a)}>{t("ویرایش دسترسی", "Edit access")}</Button>}
           {a.role !== "sudo" && <Button size="sm" colorScheme="green" onClick={() => { const d = prompt(t("روز شارژ", "Days to add"), "30"); if (d === null) return; const g = prompt(t("حجم شارژ (GB)", "GB to add"), "0"); if (g === null) return; const r = confirm(t("مصرف کاربران ریست شود؟", "Reset users' usage?")); void run(`/api/admins/${a.id}/recharge`, J("POST", { add_days: Number(d) || 0, add_traffic: Math.round((Number(g) || 0) * GB), reset_usage: r })); }}>{t("شارژ", "Recharge")}</Button>}

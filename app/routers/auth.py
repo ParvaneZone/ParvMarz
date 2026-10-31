@@ -303,7 +303,24 @@ def set_sub_template(body: TemplateIn, admin: Admin = Depends(current_admin), db
 # ----------------------------------------------------------------------------- Telegram bot link
 @router.get("/telegram", summary="وضعیت اتصال ربات تلگرام", responses=errs(401))
 def telegram_status(admin: Admin = Depends(current_admin)):
-    return {"enabled": bool(settings.telegram_bot_token), "linked": bool(admin.telegram_id)}
+    return {"enabled": bool(settings.telegram_bot_token), "linked": bool(admin.telegram_id), "telegram_id": admin.telegram_id}
+
+
+class TgIdIn(BaseModel):
+    telegram_id: str = Field(default="", max_length=40)
+
+
+@router.put("/telegram", summary="ثبت آیدی عددی تلگرام (بدون نیاز به لینک)", responses=errs(401, 403, 409, 422))
+def telegram_set(body: TgIdIn, admin: Admin = Depends(session_admin), db: Session = Depends(get_db)):
+    from app.core.tgbot import clean_tg_id, send_text_sync
+    if not settings.telegram_bot_token: raise _err(409, "ربات تلگرام تنظیم نشده است (TELEGRAM_BOT_TOKEN)", "TELEGRAM_DISABLED")
+    try: tid = clean_tg_id(body.telegram_id)
+    except ValueError as e: raise _err(422, str(e), "INVALID_TELEGRAM_ID")
+    if tid and db.query(Admin).filter(Admin.telegram_id == tid, Admin.id != admin.id).first():
+        raise _err(409, "این آیدی تلگرام برای ادمین دیگری ثبت شده است", "TELEGRAM_ID_EXISTS")
+    changed = tid != admin.telegram_id; admin.telegram_id = tid; db.commit()
+    sent = send_text_sync(tid, f"✅ اکانت «{admin.username}» به این ربات وصل شد.\n/status وضعیت اکانت") if tid and changed else None
+    return {"ok": True, "telegram_sent": sent}
 
 
 @router.post("/telegram/link", summary="ساخت لینک اتصال یک‌بارمصرف ربات", responses=errs(401, 403, 409))

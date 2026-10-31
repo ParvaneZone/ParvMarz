@@ -27,11 +27,12 @@ async def lifespan(_: FastAPI):
                 db.commit()
     if settings.environment != "test":
         start_scheduler()
-        from app.core.tgbot import set_webhook
-        _wh = asyncio.create_task(set_webhook())  # noqa: F841 - fire and forget
+        from app.core.tgbot import run_bot
+        _bot = asyncio.create_task(run_bot())  # registers the webhook itself and keeps it healthy
     yield
     if settings.environment != "test":
         stop_scheduler()
+        _bot.cancel()
 
 app = FastAPI(title=settings.app_name, docs_url="/docs" if settings.openapi_enabled else None,
               openapi_url="/openapi.json" if settings.openapi_enabled else None,
