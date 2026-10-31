@@ -208,7 +208,9 @@ def get_inbounds(panel_id: int, _: Admin = Depends(require_sudo), db: Session = 
     hosts = {}
     for h in db.query(PanelInbound).filter_by(panel_id=panel_id, kind='host').all():
         hosts.setdefault(h.tag, []).append({'remark': h.remark, 'address': (h.extra or {}).get('address', '')})
-    return [{'id':x.id,'kind':x.kind,'remote_id':x.remote_id,'tag':x.tag,'protocol':x.protocol,'network':x.network,'security':x.security,'remark':x.remark,'cached_at':x.cached_at,'hosts':hosts.get(x.tag, [])} for x in db.query(PanelInbound).filter_by(panel_id=panel_id, kind='inbound').all()]
+    from app.db.models import InboundAlias
+    al = {a.tag: a.display_name for a in db.query(InboundAlias).filter_by(panel_id=panel_id).all()}
+    return [{'display_name':al.get(x.tag or '',''),'id':x.id,'kind':x.kind,'remote_id':x.remote_id,'tag':x.tag,'protocol':x.protocol,'network':x.network,'security':x.security,'remark':x.remark,'cached_at':x.cached_at,'hosts':hosts.get(x.tag, [])} for x in db.query(PanelInbound).filter_by(panel_id=panel_id, kind='inbound').all()]
 
 
 @router.put('/{panel_id}')

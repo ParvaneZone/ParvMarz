@@ -100,22 +100,39 @@ def rename_link(link:str,name:str)->str:
   except Exception: return link
  return link.split('#',1)[0]+'#'+quote(name)
 
-def apply_aliases(links:list[str],inbounds:list[tuple],aliases:dict)->list[str]:
- """inbounds: (tag,protocol,network,security) of one panel; aliases: tag->display name.
- A link is renamed only when it maps to exactly one aliased inbound (by tag in its name, else by protocol/network/security)."""
+def link_inbound_tag(p:dict,inbounds:list[tuple],hosts:list[tuple]=(),only=None)->str|None:
+ """Which inbound of the panel a link belongs to: by host remark, else tag inside the name, else a unique protocol/network/security match.
+ inbounds: (tag,protocol,network,security); hosts: (tag,remark); only: restrict the name-based steps to these tags."""
+ name=p.get('name','') or ''
+ ok=lambda t:bool(t) and (only is None or t in only)
+ hs=[(t,r) for t,r in hosts if ok(t) and r]
+ hit={t for t,r in hs if r==name} or {t for t,r in hs if r in name and not any(len(r2)>len(r) and r2 in name for _,r2 in hs)}
+ if len(hit)!=1: hit={t for t,*_ in inbounds if ok(t) and t in name}
+ if len(hit)==1: return next(iter(hit))
+ sig=(p['type'],p.get('network') or 'tcp',p.get('security') or ('tls' if p.get('tls') else 'none'))
+ cand=[t for t,pr,nw,sc in inbounds if ((pr or '').lower(),nw or 'tcp',sc or 'none')==sig]
+ return cand[0] if len(cand)==1 and (only is None or cand[0] in only) else None
+
+def apply_aliases(links:list[str],inbounds:list[tuple],aliases:dict,hosts:list[tuple]=())->list[str]:
+ """Rename links whose inbound has a display name (aliases: tag->name). Several links of one inbound get \" 2\", \" 3\"… so names stay unique."""
  if not aliases: return links
- out=[]
+ out=[]; used={}
  for link in links:
   p=parse_link(link)
-  if not p: out.append(link); continue
-  name=p.get('name','')
-  hit=[t for t,*_ in inbounds if t in aliases and t and t in name]
-  if len(hit)!=1:
-   sig=(p['type'],p.get('network') or 'tcp',p.get('security') or ('tls' if p.get('tls') else 'none'))
-   cand=[t for t,pr,nw,sc in inbounds if ((pr or '').lower(),nw or 'tcp',sc or 'none')==sig]
-   hit=cand if len(cand)==1 and cand[0] in aliases else []
-  out.append(rename_link(link,aliases[hit[0]]) if len(hit)==1 else link)
+  tag=link_inbound_tag(p,inbounds,hosts,set(aliases)) if p else None
+  if tag in aliases:
+   n=used[tag]=used.get(tag,0)+1; out.append(rename_link(link,aliases[tag]+(f' {n}' if n>1 else '')))
+  else: out.append(link)
  return out
+
+def link_member_keys(link:str,panel_id:int,inbounds:list[tuple],hosts:list[tuple]=())->set:
+ """Keys a group member can use for this link (taken from the ORIGINAL link): c|panel|name and i|panel|tag."""
+ p=parse_link(link)
+ if not p: return set()
+ keys={f"c|{panel_id}|{p.get('name','')}"}
+ tag=link_inbound_tag(p,inbounds,hosts)
+ if tag: keys.add(f"i|{panel_id}|{tag}")
+ return keys
 
 
 def apply_config_names(links: list[str], names: dict[str, str]) -> list[str]:

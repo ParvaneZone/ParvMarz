@@ -17,57 +17,68 @@ from app.core.errors import short_error
 import logging
 log=logging.getLogger('jinxdata.sub')
 _fetch_err:dict[int,str]={}
-from app.subscription.merge import deduplicate_links, apply_aliases, apply_config_names, to_clash, to_singbox, to_v2ray_json
-from app.subscription.pick import pick_links
+from app.subscription.merge import deduplicate_links, apply_aliases, apply_config_names, link_member_keys, to_clash, to_singbox, to_v2ray_json
+from app.subscription.pick import pick_links, pick_from_groups
 from app.subscription.geo import client_ip, spawn_record
 from app.subscription.page import render_subscription_page
 router=APIRouter(tags=['subscription'])
 _cache:dict[str,tuple[float,list[str]]]={}
-async def _remote_links(user_id:int, token_version:int)->list[str]:
+_gcache:dict[str,dict]={}
+async def _remote_links(user_id:int, token_version:int)->tuple[list[str],dict]:
+ """-> (links, {final link: [group ids it belongs to]})"""
  with SessionLocal() as db:
   user=db.get(User,user_id)
   if not user or user.sub_token_version!=token_version: raise HTTPException(404,'Subscription not found')
   accounts=db.query(UserPanelAccount,Panel).join(Panel,Panel.id==UserPanelAccount.panel_id).filter(UserPanelAccount.user_id==user_id,Panel.enabled.is_(True)).all()
   snapshot=[(a.panel_id,a.remote_username,p.type,p.base_url,p.credentials_enc,p.verify_ssl) for a,p in accounts]
-  amap={}; cmap={}
+  amap={}; cmap={}; gdef={}; pinfo={}
+  gs=db.get(Setting,'link_groups'); ss=db.get(Setting,f'svc_groups:{user.service_id}')
+  want={str(x) for x in (ss.value.get('ids') or [])} if ss and isinstance(ss.value,dict) else set()
+  for g in ((gs.value.get('items') or []) if gs and isinstance(gs.value,dict) else []):
+   if str(g.get('id')) in want: gdef[str(g['id'])]={f"{m.get('kind','c')[:1]}|{m.get('panel_id')}|{m.get('key')}" for m in g.get('members',[])}
   for pid_ in {a[0] for a in snapshot}:
    al={x.tag:x.display_name for x in db.query(InboundAlias).filter_by(panel_id=pid_).all()}
    cm={k[4:]:v for k,v in al.items() if k.startswith('cfg:')}
    if cm: cmap[pid_]=cm
-   if al: amap[pid_]=(al,[(x.tag,x.protocol,x.network,x.security) for x in db.query(PanelInbound).filter_by(panel_id=pid_,kind='inbound').all()])
+   ib=[(x.tag,x.protocol,x.network,x.security) for x in db.query(PanelInbound).filter_by(panel_id=pid_,kind='inbound').all()]
+   hs=[(x.tag,x.remark) for x in db.query(PanelInbound).filter_by(panel_id=pid_,kind='host').all()]
+   pinfo[pid_]=(ib,hs)
+   if al: amap[pid_]=(al,ib,hs)
   setting=db.get(Setting,f'subcache:{user_id}:{token_version}')
   persisted=setting.value if setting and isinstance(setting.value,dict) else None
  cache_key=f'{user_id}:{token_version}'; now=time.time()
- if cache_key in _cache and _cache[cache_key][0]>time.monotonic(): return _cache[cache_key][1]
+ if cache_key in _cache and _cache[cache_key][0]>time.monotonic(): return _cache[cache_key][1],_gcache.get(cache_key,{})
  if persisted and isinstance(persisted.get('links'),list):
-  _cache[cache_key]=(time.monotonic()+max(0,persisted.get('expires',0)-now),persisted['links'])
+  _cache[cache_key]=(time.monotonic()+max(0,persisted.get('expires',0)-now),persisted['links']); _gcache[cache_key]=persisted.get('groups') or {}
  async def one(row):
   pid,remote,ptype,url,enc,ssl=row
   try:
    username,_,password=decrypt_secret(enc).partition('\n'); driver=build_driver(ptype,url,{'username':username,'password':password},ssl)
    got=await asyncio.wait_for(driver.get_sub_links(remote),timeout=8)
+   keys=[link_member_keys(l,pid,*pinfo.get(pid,([],[]))) for l in got] if gdef else []
    if pid in cmap: got=apply_config_names(got,cmap[pid])
-   if pid in amap: got=apply_aliases(got,amap[pid][1],amap[pid][0])
-   return True, got
+   if pid in amap: got=apply_aliases(got,amap[pid][1],amap[pid][0],amap[pid][2])
+   gm={l:[g for g,m in gdef.items() if k&m] for l,k in zip(got,keys)} if gdef else {}
+   return True, got, gm
   except Exception as exc:
    if len(_fetch_err)>2000: _fetch_err.clear()
-   _fetch_err[user_id]=short_error(exc); log.warning('sub links fetch failed (user %s, panel %s): %s',user_id,pid,_fetch_err[user_id]); return False, []
+   _fetch_err[user_id]=short_error(exc); log.warning('sub links fetch failed (user %s, panel %s): %s',user_id,pid,_fetch_err[user_id]); return False, [], {}
  _fetch_err.pop(user_id,None)
  results=await asyncio.gather(*(one(r) for r in snapshot))
- if any(not ok for ok,_ in results):
-  if persisted and isinstance(persisted.get('links'),list): return persisted['links']
-  if cache_key in _cache: return _cache[cache_key][1]
- links=[link for _,group in results for link in group]
+ if any(not r[0] for r in results):
+  if persisted and isinstance(persisted.get('links'),list): return persisted['links'],persisted.get('groups') or {}
+  if cache_key in _cache: return _cache[cache_key][1],_gcache.get(cache_key,{})
+ links=[link for r in results for link in r[1]]; gm={k:v for r in results for k,v in r[2].items()}
  if links or not snapshot:
   if len(_cache)>1500:
    t=time.monotonic()
    for k in [k for k,v in _cache.items() if v[0]<=t]: _cache.pop(k,None)
    while len(_cache)>1500: _cache.pop(next(iter(_cache)),None)
-  _cache[cache_key]=(time.monotonic()+30,links)
+  _cache[cache_key]=(time.monotonic()+30,links); _gcache[cache_key]=gm
   with SessionLocal() as db:
-   db.merge(Setting(key=f'subcache:{user_id}:{token_version}',value={'links':links,'expires':now+30}))
+   db.merge(Setting(key=f'subcache:{user_id}:{token_version}',value={'links':links,'groups':gm,'expires':now+30}))
    db.commit()
- return links
+ return links,gm
 
 def _ts(v): return int(v.timestamp()) if v else None
 def _load_user(token:str):
@@ -78,7 +89,7 @@ def _load_user(token:str):
   else: user=db.query(User).filter(func.lower(User.username)==claims['u'].lower()).first()  # legacy token
   if not user or user.sub_token_version!=claims['v']: raise HTTPException(404,'Subscription not found')
   svc=db.get(Service,user.service_id)
-  return {'id':user.id,'username':user.username,'version':user.sub_token_version,'status':user.status,'used':user.used_traffic,'limit':user.data_limit,'expire':_ts(user.expire) or 0,'created':_ts(user.created_at) or 0,'service_id':user.service_id,'service_name':(svc.display_name or svc.name) if svc else '','inb_mode':svc.inbound_mode if svc else 'all','inb_interval':svc.inbound_interval if svc else 60,'inb_count':svc.inbound_count if svc else 1,'admin_id':user.admin_id,'online_at':_ts(user.online_at),'reset':user.data_limit_reset_strategy,'on_hold_days':(user.on_hold_expire_duration or 0)//86400 or None}
+  return {'id':user.id,'username':user.username,'version':user.sub_token_version,'status':user.status,'used':user.used_traffic,'limit':user.data_limit,'expire':_ts(user.expire) or 0,'created':_ts(user.created_at) or 0,'service_id':user.service_id,'groups':(lambda ss:[str(x) for x in (ss.value.get('ids') or [])] if ss and isinstance(ss.value,dict) else [])(db.get(Setting,f'svc_groups:{user.service_id}')),'service_name':(svc.display_name or svc.name) if svc else '','inb_mode':svc.inbound_mode if svc else 'all','inb_interval':svc.inbound_interval if svc else 60,'inb_count':svc.inbound_count if svc else 1,'admin_id':user.admin_id,'online_at':_ts(user.online_at),'reset':user.data_limit_reset_strategy,'on_hold_days':(user.on_hold_expire_duration or 0)//86400 or None}
 def _inactive(u)->bool:
  return u['status']!='active' or bool(u['expire'] and u['expire']<=int(time.time())) or (u['limit'] is not None and u['used']>=u['limit'])
 def _page_state(u)->str:
@@ -140,9 +151,9 @@ async def subscription(token:str,request:Request,client_type:str='v2ray'):
  u=_load_user(token)
  if client_type not in {'v2ray','clash','clash-meta','sing-box','v2ray-json'}: raise HTTPException(404,'Unsupported client type')
  inactive=_inactive(u)
- links=[] if inactive else await _remote_links(u['id'],u['version'])
+ links,gm=([],{}) if inactive else await _remote_links(u['id'],u['version'])
  parsed=deduplicate_links(links)
- if links and not _wants_page(request): parsed=pick_links(parsed,u['inb_mode'],u['inb_interval'],u['inb_count'],u['id'])
+ if links and not _wants_page(request): parsed=pick_from_groups(parsed,gm,u['groups'],u['inb_mode'],u['inb_interval'],u['inb_count'],u['id'])
  if client_type=='v2ray' and _wants_page(request):
   nonce=secrets.token_urlsafe(16); sub_url=f"{_public_base(request)}/sub/{token}"
   body=render_subscription_page(nonce=nonce,brand="Link Sub",username=u['username'],state=_page_state(u),used=u['used'],limit=u['limit'],expire=u['expire'],created=u['created'],now=int(time.time()),online_at=u['online_at'],service=u['service_name'],reset=u['reset'],on_hold_days=u['on_hold_days'],links=parsed,sub_url=sub_url,qr_svg=_qr_svg(sub_url))

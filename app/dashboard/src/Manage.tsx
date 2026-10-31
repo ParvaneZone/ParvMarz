@@ -96,10 +96,19 @@ function ItemAdder({ c, service, done }: { c: Ctx; service: any; done: () => voi
       <F label={t("پنل", "Panel")}><Select placeholder="—" value={pid} onChange={e => setPid(e.target.value)}>{(panels.data || []).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></F>
       <F label={t("اولویت", "Priority")}><Input type="number" value={prio} onChange={e => setPrio(e.target.value)} /></F></SimpleGrid>
     {pid && <Box mt={2}><HStack mb={1} spacing={2}><Text fontSize="sm">{t("اینباندهای پنل (خالی = همه)", "Panel inbounds (empty = all)")}</Text>{busy && <Text fontSize="xs" className="muted">{t("در حال دریافت از پنل…", "Fetching from panel…")}</Text>}
-      {inb.length > 0 && <><Button size="xs" variant="outline" onClick={() => setSel(inb.filter(x => x.kind !== "group").map(x => String(x.tag ?? x.remote_id ?? x.id)))}>{t("همه", "All")}</Button><Button size="xs" variant="outline" onClick={() => setSel([])}>{t("هیچ‌کدام", "None")}</Button></>}</HStack><HStack flexWrap="wrap" spacing={3}>{inb.filter(x => x.kind !== "group").map(x => { const k = String(x.tag ?? x.remote_id ?? x.id); return <Checkbox key={x.id} isChecked={sel.includes(k)} onChange={e => setSel(e.target.checked ? [...sel, k] : sel.filter(s => s !== k))}>{(x.hosts || []).length ? <><b>{(x.hosts as any[]).map(h => h.remark).join("، ")}</b> <span className="muted ltr">· {x.tag}</span></> : (x.tag || x.remote_id)}{x.protocol ? ` · ${x.protocol}` : ""}</Checkbox>; })}
+      {inb.length > 0 && <><Button size="xs" variant="outline" onClick={() => setSel(inb.filter(x => x.kind !== "group").map(x => String(x.tag ?? x.remote_id ?? x.id)))}>{t("همه", "All")}</Button><Button size="xs" variant="outline" onClick={() => setSel([])}>{t("هیچ‌کدام", "None")}</Button></>}</HStack><HStack flexWrap="wrap" spacing={3}>{inb.filter(x => x.kind !== "group").map(x => { const k = String(x.tag ?? x.remote_id ?? x.id); return <Checkbox key={x.id} isChecked={sel.includes(k)} onChange={e => setSel(e.target.checked ? [...sel, k] : sel.filter(s => s !== k))}>{x.display_name ? <><b>{x.display_name}</b> <span className="muted ltr">· {x.tag}</span></> : (x.hosts || []).length ? <><b>{(x.hosts as any[]).map(h => h.remark).join("، ")}</b> <span className="muted ltr">· {x.tag}</span></> : (x.tag || x.remote_id)}{x.protocol ? ` · ${x.protocol}` : ""}</Checkbox>; })}
       {!busy && inb.length === 0 && <Text fontSize="sm" className={err ? undefined : "muted"} color={err ? "red.400" : undefined}>{err || t("اینباندی پیدا نشد؛ اتصال پنل را در تب پنل‌ها تست کنید.", "No inbounds found; test the panel connection in the Panels tab.")}</Text>}</HStack></Box>}
     <Button mt={3} size="sm" colorScheme="blue" isDisabled={!pid} onClick={() => run(`/api/services/${service.id}/items`, J("POST", { panel_id: Number(pid), selected_items: sel, priority: Number(prio) }), done)}>{t("افزودن پنل به سرویس", "Attach panel")}</Button>
   </Box>;
+}
+function ServiceGroups({ c, service }: { c: Ctx; service: any }) {
+  const { api, t } = c; const run = useRun(c, ["services"]);
+  const g = useQuery({ queryKey: ["groups"], queryFn: () => api("/api/inbounds/groups") });
+  if (!(g.data || []).length) return null;
+  const ids: number[] = service.group_ids || [];
+  const save = (n: number[]) => run(`/api/services/${service.id}/groups`, J("PUT", { group_ids: n }));
+  return <Box mt={2}><Text fontSize="sm" className="muted">{t("دسته‌ها (از هر دسته در هر دریافت فقط یکی نمایش داده می‌شود)", "Groups (one link per group per fetch)")}</Text>
+    <HStack flexWrap="wrap" spacing={3}>{(g.data || []).map((x: any) => <Checkbox key={x.id} isChecked={ids.includes(x.id)} onChange={e => save(e.target.checked ? [...ids, x.id] : ids.filter(i => i !== x.id))}>{x.name} ({(x.members || []).length})</Checkbox>)}</HStack></Box>;
 }
 export function ServicesTab(c: Ctx) {
   const { api, t } = c; const run = useRun(c, ["services"]);
@@ -128,7 +137,8 @@ export function ServicesTab(c: Ctx) {
           <Button size="xs" onClick={() => { setEditId(s.id); setF({ ...empty, name: s.name, display_name: s.display_name, description: s.description, enabled: s.enabled, sort_order: s.sort_order, sub_remark_template: s.sub_remark_template || empty.sub_remark_template, inbound_mode: s.inbound_mode || "all", inbound_interval: s.inbound_interval || 60, inbound_count: s.inbound_count || 1 }); }}>{t("ویرایش", "Edit")}</Button>
           <Button size="xs" colorScheme="red" onClick={() => confirm(t("حذف شود؟", "Delete?")) && run(`/api/services/${s.id}`, J("DELETE"))}>{t("حذف", "Delete")}</Button></HStack>}</HStack>
       {s.inbound_names?.length > 0 && <Text fontSize="sm" mt={2}>{s.inbound_names.join("، ")}</Text>}
-      <Table size="sm" mt={2}><Tbody>{s.items.map((i: any) => <Tr key={i.id}><Td>{pname(i.panel_id)}</Td><Td className="ltr">{(i.selected_items || []).join(", ") || t("همه", "all")}</Td><Td>P{i.priority}</Td><Td><Button size="xs" colorScheme="red" variant="outline" aria-label={t("حذف","Remove")} onClick={() => run(`/api/services/${s.id}/items/${i.id}`, J("DELETE"))}><Icon name="x" size={14} /></Button></Td></Tr>)}</Tbody></Table>
+      <Table size="sm" mt={2}><Tbody>{s.items.map((i: any) => <Tr key={i.id}><Td>{pname(i.panel_id)}</Td><Td>{(i.selected_names || i.selected_items || []).join(", ") || t("همه", "all")}</Td><Td>P{i.priority}</Td><Td><Button size="xs" colorScheme="red" variant="outline" aria-label={t("حذف","Remove")} onClick={() => run(`/api/services/${s.id}/items/${i.id}`, J("DELETE"))}><Icon name="x" size={14} /></Button></Td></Tr>)}</Tbody></Table>
+      {s.group_ids && <ServiceGroups c={c} service={s} />}
       {addFor === s.id && <ItemAdder c={c} service={s} done={() => setAddFor(null)} />}
     </Box>)}
   </Box>;
@@ -329,6 +339,27 @@ function ConfigNames({ c }: { c: Ctx }) {
   </Box>;
 }
 
+function GroupsBox({ c }: { c: Ctx }) {
+  const { api, t } = c; const run = useRun(c, ["groups", "services"]);
+  const g = useQuery({ queryKey: ["groups"], queryFn: () => api("/api/inbounds/groups") });
+  const cf = useQuery({ queryKey: ["cfgs"], queryFn: () => api("/api/inbounds/configs"), staleTime: 60000 });
+  const ib = useQuery({ queryKey: ["inbounds"], queryFn: () => api("/api/inbounds") });
+  const [f, setF] = React.useState<any>(null);
+  const opts: any[] = [...(cf.data?.items || []).map((x: any) => ({ panel_id: x.panel_id, kind: "config", key: x.name, label: `${x.panel_name} · ${x.display_name || x.name}` })),
+    ...(ib.data || []).map((x: any) => ({ panel_id: x.panel_id, kind: "inbound", key: x.tag, label: `${x.panel_name} · ${t("اینباند", "inbound")} · ${x.display_name || (x.hosts || [])[0]?.remark || x.tag}` }))];
+  const id = (m: any) => `${m.kind}|${m.panel_id}|${m.key}`;
+  const has = (m: any) => f.members.some((y: any) => id(y) === id(m));
+  return <Box mt={8}>
+    <HStack justify="space-between" mb={1}><Heading size="sm">{t("دسته‌بندی‌ها", "Groups")}</Heading><Button size="xs" colorScheme="blue" onClick={() => setF({ id: null, name: "", members: [] })}>{t("دسته جدید", "New group")}</Button></HStack>
+    <Text fontSize="sm" className="muted" mb={3}>{t("چند کانفیگ/اینباند را در یک دسته بگذارید؛ با هر آپدیت اشتراک فقط یکی از آن‌ها به کاربر نشان داده می‌شود. دسته را در تب سرویس‌ها به سرویس وصل کنید.", "Put several configs/inbounds in one group; each subscription update shows only one of them. Attach groups to a service in the Services tab.")}</Text>
+    {(g.data || []).map((x: any) => <HStack key={x.id} mb={1} justify="space-between"><Text><b>{x.name}</b> <span className="muted">({(x.members || []).length})</span></Text>
+      <HStack><Button size="xs" onClick={() => setF(x)}>{t("ویرایش", "Edit")}</Button><Button size="xs" colorScheme="red" variant="outline" onClick={() => confirm(t("حذف شود؟", "Delete?")) && run(`/api/inbounds/groups/${x.id}`, J("DELETE"))}>{t("حذف", "Delete")}</Button></HStack></HStack>)}
+    {f && <Box className="create-form" mt={3}><F label={t("نام دسته", "Group name")}><Input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></F>
+      <Box mt={2} maxH="260px" overflowY="auto">{opts.map(m => <Box key={id(m)}><Checkbox isChecked={has(m)} onChange={e => setF({ ...f, members: e.target.checked ? [...f.members, m] : f.members.filter((y: any) => id(y) !== id(m)) })}>{m.label}</Checkbox></Box>)}</Box>
+      <HStack mt={3}><Button size="sm" colorScheme="blue" isDisabled={!f.name.trim()} onClick={() => run(f.id ? `/api/inbounds/groups/${f.id}` : "/api/inbounds/groups", J(f.id ? "PUT" : "POST", { name: f.name, members: f.members }), () => setF(null))}>{t("ذخیره", "Save")}</Button><Button size="sm" onClick={() => setF(null)}>{t("انصراف", "Cancel")}</Button></HStack></Box>}
+  </Box>;
+}
+
 export function InboundsTab(c: Ctx) {
   const { api, t } = c; const run = useRun(c, ["inbounds"]);
   const q = useQuery({ queryKey: ["inbounds"], queryFn: () => api("/api/inbounds") });
@@ -338,6 +369,7 @@ export function InboundsTab(c: Ctx) {
     <Heading size="md" mb={1}>{t("نام اینباندها", "Inbound names")}</Heading>
     <Text fontSize="sm" className="muted" mb={4}>{t("نام هاست کنار هر اینباند نمایش داده می‌شود و مبنای تغییر نام و ساخت سرویس است. نام نمایشی به‌جای آن برای کاربران و ادمین‌ها دیده می‌شود؛ خالی = نام هاست. بعد از افزودن هاست، پنل را دوباره همگام‌سازی کنید.", "The host name is shown beside each inbound and is the base for renaming and building services. The display name replaces it for users and admins; empty = host name. Re-sync the panel after adding hosts.")}</Text>
     <ConfigNames c={c} />
+    <GroupsBox c={c} />
     <Heading size="sm" mt={8} mb={3}>{t("اینباندها", "Inbounds")}</Heading>
     <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("پنل", "Panel")}</Th><Th>{t("هاست", "Host")}</Th><Th>{t("اینباند", "Inbound")}</Th><Th>{t("نوع", "Type")}</Th><Th>{t("نام نمایشی", "Display name")}</Th><Th /></Tr></Thead>
       <Tbody>{(q.data || []).map((x: any) => <Tr key={key(x)}><Td>{x.panel_name}</Td><Td>{(x.hosts || []).length ? (x.hosts as any[]).map((h, i) => <Box key={i}><Text fontWeight={700}>{h.remark}</Text>{h.address && <Text className="muted ltr" fontSize="xs">{h.address}</Text>}</Box>) : <Text className="muted">—</Text>}</Td><Td className="ltr muted">{x.tag}</Td><Td className="ltr">{[x.protocol, x.network, x.security].filter(Boolean).join(" / ")}</Td>

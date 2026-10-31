@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from app.core.security import require_sudo
-from app.db.models import Admin, InboundAlias, Panel, PanelInbound, AuditLog, UserPanelAccount
+from app.db.models import Admin, InboundAlias, Panel, PanelInbound, AuditLog, UserPanelAccount, Setting
 from app.db.session import get_db
 
 router = APIRouter(prefix="/api/inbounds", tags=["inbounds"])
@@ -99,4 +99,57 @@ def set_config_name(body: ConfigNameIn, actor: Admin = Depends(require_sudo), db
     db.add(AuditLog(actor_admin_id=actor.id, action="config.rename", object_type="config",
                     object_id=f"{body.panel_id}:{body.name}", details={"name": name}))
     db.commit()
+    return {"ok": True}
+
+
+# ---- Groups: several configs/inbounds in one bucket; a subscription shows only ONE of them per fetch ----
+class MemberIn(BaseModel):
+    panel_id: int
+    kind: str = Field(pattern="^(config|inbound)$")
+    key: str = Field(min_length=1, max_length=180)
+    label: str = Field(default="", max_length=180)
+
+
+class GroupIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    members: list[MemberIn] = []
+
+
+def _groups(db: Session) -> dict:
+    row = db.get(Setting, "link_groups")
+    v = row.value if row and isinstance(row.value, dict) else {}
+    return {"next": int(v.get("next", 1)), "items": list(v.get("items", []))}
+
+
+def _save_groups(db: Session, data: dict) -> None:
+    db.merge(Setting(key="link_groups", value=data))
+
+
+@router.get("/groups")
+def list_groups(_: Admin = Depends(require_sudo), db: Session = Depends(get_db)):
+    return _groups(db)["items"]
+
+
+@router.post("/groups")
+def create_group(body: GroupIn, _: Admin = Depends(require_sudo), db: Session = Depends(get_db)):
+    d = _groups(db)
+    g = {"id": d["next"], "name": body.name.strip(), "members": [m.model_dump() for m in body.members]}
+    d["next"] += 1; d["items"].append(g); _save_groups(db, d); db.commit()
+    return {"id": g["id"]}
+
+
+@router.put("/groups/{gid}")
+def update_group(gid: int, body: GroupIn, _: Admin = Depends(require_sudo), db: Session = Depends(get_db)):
+    d = _groups(db)
+    g = next((x for x in d["items"] if x["id"] == gid), None)
+    if not g: raise HTTPException(404, detail={"detail": "دسته پیدا نشد", "code": "GROUP_NOT_FOUND"})
+    g["name"] = body.name.strip(); g["members"] = [m.model_dump() for m in body.members]
+    _save_groups(db, d); db.commit()
+    return {"ok": True}
+
+
+@router.delete("/groups/{gid}")
+def delete_group(gid: int, _: Admin = Depends(require_sudo), db: Session = Depends(get_db)):
+    d = _groups(db); d["items"] = [x for x in d["items"] if x["id"] != gid]
+    _save_groups(db, d); db.commit()
     return {"ok": True}

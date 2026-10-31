@@ -175,6 +175,7 @@ class ServiceOut(_Out):
     inbound_count: int = 1
     items: list[dict[str, Any]] = Field(description="برای sudo جزئیات پنل‌ها؛ برای نماینده همیشه خالی")
     inbound_names: list[str] | None = Field(default=None, description="فقط برای نماینده")
+    group_ids: list[int] | None = Field(default=None, description="فقط برای sudo: دسته‌های متصل به سرویس")
 
 
 class TemplateOut(_Out):

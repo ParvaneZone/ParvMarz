@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from app.core.security import current_admin, require_sudo
-from app.db.models import Admin, Service, ServiceItem, Panel, AuditLog, InboundAlias, PanelInbound
+from app.db.models import Admin, Service, ServiceItem, Panel, AuditLog, InboundAlias, PanelInbound, Setting
 from app.db.session import get_db
 from app.schemas import ServiceOut, errs
 router=APIRouter(prefix='/api/services',tags=['services'])
@@ -18,7 +18,9 @@ def list_services(admin:Admin=Depends(current_admin),db:Session=Depends(get_db))
  for s in q.order_by(Service.sort_order,Service.id).all():
   items=db.query(ServiceItem).filter(ServiceItem.service_id==s.id).all()
   d={'id':s.id,'name':s.name,'display_name':s.display_name,'description':s.description,'enabled':s.enabled,'sort_order':s.sort_order,'sub_remark_template':s.sub_remark_template,'inbound_mode':s.inbound_mode,'inbound_interval':s.inbound_interval,'inbound_count':s.inbound_count}
-  if admin.role=='sudo': d['items']=[{'id':i.id,'panel_id':i.panel_id,'selected_items':i.selected_items,'priority':i.priority,'enabled':i.enabled} for i in items]
+  if admin.role=='sudo':
+   gs=db.get(Setting,f'svc_groups:{s.id}'); d['group_ids']=[int(x) for x in (gs.value.get('ids') or [])] if gs and isinstance(gs.value,dict) else []
+   d['items']=[{'id':i.id,'panel_id':i.panel_id,'selected_items':i.selected_items,'selected_names':[aliases.get((i.panel_id,str(t)),str(t)) for t in (i.selected_items or [])],'priority':i.priority,'enabled':i.enabled} for i in items]
   else:
    names=[]
    for i in items:
@@ -43,7 +45,8 @@ def delete_service(service_id:int,actor:Admin=Depends(require_sudo),db:Session=D
  s=db.get(Service,service_id)
  if not s: raise HTTPException(404,detail={'detail':'سرویس پیدا نشد','code':'SERVICE_NOT_FOUND'})
  if db.query(__import__('app.db.models',fromlist=['User']).User).filter_by(service_id=service_id).first(): raise HTTPException(409,detail={'detail':'ابتدا کاربران این سرویس را منتقل یا حذف کنید','code':'SERVICE_IN_USE'})
- db.query(ServiceItem).filter_by(service_id=service_id).delete()
+ db.query(ServiceItem).filter_by(service_id=service_id).delete(); g=db.get(Setting,f'svc_groups:{service_id}')
+ if g: db.delete(g)
  db.add(AuditLog(actor_admin_id=actor.id,action='service.delete',object_type='service',object_id=str(s.id),details={})); db.delete(s); db.commit(); return {'ok':True}
 @router.post('/{service_id}/items')
 def add_item(service_id:int,body:ItemIn,actor:Admin=Depends(require_sudo),db:Session=Depends(get_db)):
@@ -55,3 +58,9 @@ def delete_item(service_id:int,item_id:int,_:Admin=Depends(require_sudo),db:Sess
  i=db.query(ServiceItem).filter_by(id=item_id,service_id=service_id).first()
  if not i: raise HTTPException(404,detail={'detail':'آیتم پیدا نشد','code':'ITEM_NOT_FOUND'})
  db.delete(i); db.commit(); return {'ok':True}
+
+class GroupsIn(BaseModel): group_ids:list[int]=[]
+@router.put('/{service_id}/groups')
+def set_groups(service_id:int,body:GroupsIn,_:Admin=Depends(require_sudo),db:Session=Depends(get_db)):
+ if not db.get(Service,service_id): raise HTTPException(404,detail={'detail':'سرویس پیدا نشد','code':'SERVICE_NOT_FOUND'})
+ db.merge(Setting(key=f'svc_groups:{service_id}',value={'ids':body.group_ids})); db.commit(); return {'ok':True}
