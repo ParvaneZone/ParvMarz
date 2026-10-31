@@ -104,7 +104,7 @@ function ItemAdder({ c, service, done }: { c: Ctx; service: any; done: () => voi
 function ServiceGroups({ c, service }: { c: Ctx; service: any }) {
   const { api, t } = c; const run = useRun(c, ["services"]);
   const g = useQuery({ queryKey: ["groups"], queryFn: () => api("/api/inbounds/groups") });
-  if (!(g.data || []).length) return null;
+  if (!(g.data || []).length) return <Text mt={2} fontSize="sm" className="muted">{t("هنوز دسته‌ای نساخته‌اید؛ از بخش «دسته‌بندی‌ها» پایین همین صفحه بسازید.", "No groups yet; create one in the Groups section below.")}</Text>;
   const ids: number[] = service.group_ids || [];
   const save = (n: number[]) => run(`/api/services/${service.id}/groups`, J("PUT", { group_ids: n }));
   return <Box mt={2}><Text fontSize="sm" className="muted">{t("دسته‌ها (از هر دسته در هر دریافت فقط یکی نمایش داده می‌شود)", "Groups (one link per group per fetch)")}</Text>
@@ -141,6 +141,7 @@ export function ServicesTab(c: Ctx) {
       {s.group_ids && <ServiceGroups c={c} service={s} />}
       {addFor === s.id && <ItemAdder c={c} service={s} done={() => setAddFor(null)} />}
     </Box>)}
+    <GroupsBox c={c} />
   </Box>;
 }
 
