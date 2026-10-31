@@ -65,6 +65,20 @@ change_url() {
   set_env PUBLIC_BASE_URL "$u"; set_env CORS_ORIGINS "$u"; apply
 }
 
+change_telegram() {
+  local t c
+  echo "Current bot: $([ -n "$(get_env TELEGRAM_BOT_TOKEN)" ] && echo set || echo not set)  | sudo chat id: $(get_env TELEGRAM_ADMIN_CHAT_ID)"
+  read -r -s -p "Bot token from @BotFather (empty = keep, 'off' = disable): " t || true; echo
+  case "$t" in
+    "") ;;
+    off) set_env TELEGRAM_BOT_TOKEN "";;
+    *) [[ "$t" =~ ^[0-9]+:[A-Za-z0-9_-]{30,}$ ]] || { echo "Invalid token format"; return; }; set_env TELEGRAM_BOT_TOKEN "$t";;
+  esac
+  c="$(ask 'Main-admin chat id (optional, empty = none; admins can also link from the dashboard)' "$(get_env TELEGRAM_ADMIN_CHAT_ID)")"
+  [[ -z "$c" || "$c" =~ ^-?[0-9]+$ ]] || { echo "Chat id must be a number"; return; }
+  set_env TELEGRAM_ADMIN_CHAT_ID "$c"; apply
+}
+
 # ---- SSL (Let's Encrypt via certbot container, HTTP-01 on port 80) ----
 cert_cmd() { docker run --rm -p 80:80 -v "$CERT_DIR:/etc/letsencrypt" certbot/certbot "$@"; }
 install_cron() {
@@ -128,6 +142,7 @@ while true; do
   echo "16) Disable admin 2FA (lost phone)"
   echo " 8) Change panel port (p) / URL (u)"
   echo " s) Change subscription port (separate)"
+  echo " t) Telegram bot (token / main-admin chat id)"
   echo "17) SSL certificate for PANEL domain     18) SSL certificate for SUB domain"
   echo "19) Renew SSL now                        20) Disable SSL / domain lock"
   echo " 0) Exit"
@@ -144,6 +159,7 @@ while true; do
     8|p) change_port; pause;;
     u) change_url; pause;;
     s) change_sub_port; pause;;
+    t) change_telegram; pause;;
     17) issue_cert panel; pause;;
     18) issue_cert sub; pause;;
     19) renew_cert; pause;;
