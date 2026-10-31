@@ -127,7 +127,10 @@ def _save_groups(db: Session, data: dict) -> None:
 
 @router.get("/groups")
 def list_groups(_: Admin = Depends(require_sudo), db: Session = Depends(get_db)):
-    return _groups(db)["items"]
+    use: dict = {}
+    for r in db.query(Setting).filter(Setting.key.like("svc_groups:%")).all():
+        for x in ((r.value or {}).get("ids") or []): use.setdefault(int(x), []).append(int(r.key.split(":")[1]))
+    return [{**g, "service_ids": use.get(g["id"], [])} for g in _groups(db)["items"]]
 
 
 @router.post("/groups")
@@ -149,7 +152,16 @@ def update_group(gid: int, body: GroupIn, _: Admin = Depends(require_sudo), db: 
 
 
 @router.delete("/groups/{gid}")
-def delete_group(gid: int, _: Admin = Depends(require_sudo), db: Session = Depends(get_db)):
-    d = _groups(db); d["items"] = [x for x in d["items"] if x["id"] != gid]
+def delete_group(gid: int, move_to: int | None = None, _: Admin = Depends(require_sudo), db: Session = Depends(get_db)):
+    d = _groups(db)
+    if move_to is not None and (move_to == gid or not any(x["id"] == move_to for x in d["items"])):
+        raise HTTPException(404, detail={"detail": "دسته مقصد نامعتبر است", "code": "GROUP_NOT_FOUND"})
+    d["items"] = [x for x in d["items"] if x["id"] != gid]
+    for r in db.query(Setting).filter(Setting.key.like("svc_groups:%")).all():
+        ids = [int(x) for x in ((r.value or {}).get("ids") or [])]
+        if gid in ids:
+            ids = [i for i in ids if i != gid]
+            if move_to is not None and move_to not in ids: ids.append(move_to)
+            db.merge(Setting(key=r.key, value={"ids": ids}))
     _save_groups(db, d); db.commit()
     return {"ok": True}

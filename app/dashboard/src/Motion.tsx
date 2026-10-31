@@ -184,11 +184,12 @@ export function useScrollMotion(dep: unknown) {
         timers.add(id);
       });
     }, { threshold: 0.04, rootMargin: "0px 0px -24px 0px" });
+    let first = true; // reveal only the initial paint; later-mounted elements show instantly (no flicker on every click)
     const scan = () => document.querySelectorAll(SEL + ":not([data-rv])").forEach(el => {
-      if (still) { el.setAttribute("data-rv", "done"); return; }
+      if (still || !first) { el.setAttribute("data-rv", "done"); return; }
       el.setAttribute("data-rv", ""); io.observe(el);
     });
-    scan();
+    scan(); first = false;
     let q = 0;
     const mo = new MutationObserver(() => { if (!q) q = window.setTimeout(() => { q = 0; scan(); }, 120); }); // batch bursts of DOM changes
     mo.observe(document.body, { childList: true, subtree: true });

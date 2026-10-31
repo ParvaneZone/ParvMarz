@@ -117,8 +117,17 @@ export function ServicesTab(c: Ctx) {
   const pname = (id: number) => (panels.data || []).find((p: any) => p.id === id)?.name ?? id;
   const empty = { name: "", display_name: "", description: "", enabled: true, sort_order: 0, sub_remark_template: "{service} | {server}", inbound_mode: "all", inbound_interval: 60, inbound_count: 1 };
   const [f, setF] = React.useState<any>(null); const [editId, setEditId] = React.useState<number | null>(null); const [addFor, setAddFor] = React.useState<number | null>(null);
+  const [del, setDel] = React.useState<any>(null); const [mv, setMv] = React.useState("");
   const set = (k: string, v: any) => setF({ ...f, [k]: v });
+  const gq = useQuery({ queryKey: ["groups"], queryFn: () => api("/api/inbounds/groups") });
+  const gname = (ids: number[]) => (ids || []).map(i => (gq.data || []).find((g: any) => g.id === i)?.name).filter(Boolean).join("، ");
+  const others = (q.data || []).filter((x: any) => x.id !== del?.id);
   return <Box className="panel">
+    <Modal isOpen={!!del} onClose={() => setDel(null)} isCentered><ModalOverlay /><ModalContent><ModalHeader>{t("حذف سرویس", "Delete service")} {del?.display_name}</ModalHeader><ModalCloseButton /><ModalBody pb={5}>
+      <Text fontSize="sm" mb={3}>{del?.user_count > 0 ? t(`${del.user_count} کاربر به این سرویس وصل‌اند؛ به کدام سرویس منتقل شوند؟`, `${del.user_count} users are on this service; move them to which service?`) : t("کاربری روی این سرویس نیست. قالب‌ها و دسترسی ادمین‌ها در صورت انتخاب سرویس مقصد منتقل می‌شوند.", "No users on this service. Templates and admin access move to the target if chosen.")}</Text>
+      <Select placeholder={del?.user_count > 0 ? t("انتخاب سرویس مقصد", "Choose target service") : t("بدون انتقال", "No move")} value={mv} onChange={e => setMv(e.target.value)}>{others.map((x: any) => <option key={x.id} value={x.id}>{x.display_name}</option>)}</Select>
+      <HStack mt={4}><Button colorScheme="red" isDisabled={del?.user_count > 0 && !mv} onClick={() => run(`/api/services/${del.id}${mv ? `?move_to=${mv}` : ""}`, J("DELETE"), () => { setDel(null); setMv(""); })}>{t("حذف و انتقال", "Delete & move")}</Button><Button onClick={() => setDel(null)}>{t("انصراف", "Cancel")}</Button></HStack>
+    </ModalBody></ModalContent></Modal>
     <HStack justify="space-between" mb={4}><Heading size="md">{t("سرویس‌ها", "Services")}</Heading><Button colorScheme="blue" onClick={() => { setEditId(null); setF(empty); }}>{t("سرویس جدید", "New service")}</Button></HStack>
     {f && <Box className="create-form" mb={4}><SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
       <F label={t("نام داخلی", "Name")}><Input className="ltr" value={f.name} onChange={e => set("name", e.target.value)} /></F>
@@ -132,12 +141,14 @@ export function ServicesTab(c: Ctx) {
       <F label={t("فعال", "Enabled")}><Switch isChecked={f.enabled} onChange={e => set("enabled", e.target.checked)} /></F>
     </SimpleGrid><HStack mt={4}><Button colorScheme="blue" onClick={() => run(editId ? `/api/services/${editId}` : "/api/services", J(editId ? "PUT" : "POST", f), () => setF(null))}>{t("ذخیره", "Save")}</Button><Button onClick={() => setF(null)}>{t("انصراف", "Cancel")}</Button></HStack></Box>}
     {(q.data || []).map((s: any) => <Box key={s.id} mb={4} p={3} borderWidth="1px" borderRadius="12px">
-      <HStack justify="space-between" flexWrap="wrap"><Box><Heading size="sm">{s.display_name} <Badge>{s.name}</Badge> {!s.enabled && <Badge colorScheme="red">off</Badge>}</Heading><Text fontSize="sm" className="muted">{s.description}{s.inbound_mode && s.inbound_mode !== "all" ? ` · ${s.inbound_mode === "rotate" ? t("چرخشی", "rotate") : t("رندوم", "random")} ×${s.inbound_count}` : ""}</Text></Box>
+      <HStack justify="space-between" flexWrap="wrap"><Box><Heading size="sm">{s.display_name} <Badge>{s.name}</Badge> {!s.enabled && <Badge colorScheme="red">off</Badge>} {s.user_count != null && <Badge colorScheme="blue">{s.user_count} {t("کاربر", "users")}</Badge>}</Heading><Text fontSize="sm" className="muted">{s.description}{s.inbound_mode && s.inbound_mode !== "all" ? ` · ${s.inbound_mode === "rotate" ? t("چرخشی", "rotate") : t("رندوم", "random")} ×${s.inbound_count}` : ""}</Text></Box>
         {!s.inbound_names && <HStack spacing={2}><Button size="xs" onClick={() => setAddFor(addFor === s.id ? null : s.id)}>{t("افزودن پنل", "Add panel")}</Button>
           <Button size="xs" onClick={() => { setEditId(s.id); setF({ ...empty, name: s.name, display_name: s.display_name, description: s.description, enabled: s.enabled, sort_order: s.sort_order, sub_remark_template: s.sub_remark_template || empty.sub_remark_template, inbound_mode: s.inbound_mode || "all", inbound_interval: s.inbound_interval || 60, inbound_count: s.inbound_count || 1 }); }}>{t("ویرایش", "Edit")}</Button>
-          <Button size="xs" colorScheme="red" onClick={() => confirm(t("حذف شود؟", "Delete?")) && run(`/api/services/${s.id}`, J("DELETE"))}>{t("حذف", "Delete")}</Button></HStack>}</HStack>
+          <Button size="xs" onClick={() => run(`/api/services/${s.id}/clone`, J("POST"))}>{t("کپی", "Clone")}</Button><Switch isChecked={s.enabled} onChange={e => run(`/api/services/${s.id}`, J("PUT", { name: s.name, display_name: s.display_name, description: s.description, enabled: e.target.checked, sort_order: s.sort_order, sub_remark_template: s.sub_remark_template, inbound_mode: s.inbound_mode, inbound_interval: s.inbound_interval, inbound_count: s.inbound_count }))} />
+          <Button size="xs" colorScheme="red" onClick={() => { setMv(""); setDel(s); }}>{t("حذف", "Delete")}</Button></HStack>}</HStack>
       {s.inbound_names?.length > 0 && <Text fontSize="sm" mt={2}>{s.inbound_names.join("، ")}</Text>}
-      <Table size="sm" mt={2}><Tbody>{s.items.map((i: any) => <Tr key={i.id}><Td>{pname(i.panel_id)}</Td><Td>{(i.selected_names || i.selected_items || []).join(", ") || t("همه", "all")}</Td><Td>P{i.priority}</Td><Td><Button size="xs" colorScheme="red" variant="outline" aria-label={t("حذف","Remove")} onClick={() => run(`/api/services/${s.id}/items/${i.id}`, J("DELETE"))}><Icon name="x" size={14} /></Button></Td></Tr>)}</Tbody></Table>
+      <Table size="sm" mt={2}><Tbody>{s.items.map((i: any) => <Tr key={i.id}><Td>{pname(i.panel_id)}</Td><Td>{(i.selected_names || i.selected_items || []).join(", ") || t("همه", "all")}</Td><Td>P{i.priority}</Td><Td><Switch isChecked={i.enabled} onChange={e => run(`/api/services/${s.id}/items/${i.id}`, J("PUT", { enabled: e.target.checked }))} /></Td><Td><Button size="xs" colorScheme="red" variant="outline" aria-label={t("حذف","Remove")} onClick={() => run(`/api/services/${s.id}/items/${i.id}`, J("DELETE"))}><Icon name="x" size={14} /></Button></Td></Tr>)}</Tbody></Table>
+      {s.group_ids?.length > 0 && <Text fontSize="xs" className="muted" mt={1}>{t("دسته‌ها: ", "Groups: ")}{gname(s.group_ids)}</Text>}
       {s.group_ids && <ServiceGroups c={c} service={s} />}
       {addFor === s.id && <ItemAdder c={c} service={s} done={() => setAddFor(null)} />}
     </Box>)}
@@ -345,7 +356,7 @@ function GroupsBox({ c }: { c: Ctx }) {
   const g = useQuery({ queryKey: ["groups"], queryFn: () => api("/api/inbounds/groups") });
   const cf = useQuery({ queryKey: ["cfgs"], queryFn: () => api("/api/inbounds/configs"), staleTime: 60000 });
   const ib = useQuery({ queryKey: ["inbounds"], queryFn: () => api("/api/inbounds") });
-  const [f, setF] = React.useState<any>(null);
+  const [f, setF] = React.useState<any>(null); const [gd, setGd] = React.useState<any>(null); const [gm, setGm] = React.useState("");
   const opts: any[] = [...(cf.data?.items || []).map((x: any) => ({ panel_id: x.panel_id, kind: "config", key: x.name, label: `${x.panel_name} · ${x.display_name || x.name}` })),
     ...(ib.data || []).map((x: any) => ({ panel_id: x.panel_id, kind: "inbound", key: x.tag, label: `${x.panel_name} · ${t("اینباند", "inbound")} · ${x.display_name || (x.hosts || [])[0]?.remark || x.tag}` }))];
   const id = (m: any) => `${m.kind}|${m.panel_id}|${m.key}`;
@@ -354,7 +365,12 @@ function GroupsBox({ c }: { c: Ctx }) {
     <HStack justify="space-between" mb={1}><Heading size="sm">{t("دسته‌بندی‌ها", "Groups")}</Heading><Button size="xs" colorScheme="blue" onClick={() => setF({ id: null, name: "", members: [] })}>{t("دسته جدید", "New group")}</Button></HStack>
     <Text fontSize="sm" className="muted" mb={3}>{t("چند کانفیگ/اینباند را در یک دسته بگذارید؛ با هر آپدیت اشتراک فقط یکی از آن‌ها به کاربر نشان داده می‌شود. دسته را در تب سرویس‌ها به سرویس وصل کنید.", "Put several configs/inbounds in one group; each subscription update shows only one of them. Attach groups to a service in the Services tab.")}</Text>
     {(g.data || []).map((x: any) => <HStack key={x.id} mb={1} justify="space-between"><Text><b>{x.name}</b> <span className="muted">({(x.members || []).length})</span></Text>
-      <HStack><Button size="xs" onClick={() => setF(x)}>{t("ویرایش", "Edit")}</Button><Button size="xs" colorScheme="red" variant="outline" onClick={() => confirm(t("حذف شود؟", "Delete?")) && run(`/api/inbounds/groups/${x.id}`, J("DELETE"))}>{t("حذف", "Delete")}</Button></HStack></HStack>)}
+      <HStack><Button size="xs" onClick={() => setF(x)}>{t("ویرایش", "Edit")}</Button><Button size="xs" colorScheme="red" variant="outline" onClick={() => { setGm(""); setGd(x); }}>{t("حذف", "Delete")}</Button></HStack></HStack>)}
+    <Modal isOpen={!!gd} onClose={() => setGd(null)} isCentered><ModalOverlay /><ModalContent><ModalHeader>{t("حذف دسته", "Delete group")} {gd?.name}</ModalHeader><ModalCloseButton /><ModalBody pb={5}>
+      <Text fontSize="sm" mb={3}>{(gd?.service_ids || []).length > 0 ? t(`${gd.service_ids.length} سرویس به این دسته وصل است؛ به کدام دسته منتقل شوند؟`, `${gd.service_ids.length} services use this group; move them to which group?`) : t("سرویسی به این دسته وصل نیست.", "No service uses this group.")}</Text>
+      {(gd?.service_ids || []).length > 0 && <Select placeholder={t("بدون انتقال (فقط جدا شود)", "No move (just detach)")} value={gm} onChange={e => setGm(e.target.value)}>{(g.data || []).filter((y: any) => y.id !== gd?.id).map((y: any) => <option key={y.id} value={y.id}>{y.name}</option>)}</Select>}
+      <HStack mt={4}><Button colorScheme="red" onClick={() => run(`/api/inbounds/groups/${gd.id}${gm ? `?move_to=${gm}` : ""}`, J("DELETE"), () => setGd(null))}>{t("حذف", "Delete")}</Button><Button onClick={() => setGd(null)}>{t("انصراف", "Cancel")}</Button></HStack>
+    </ModalBody></ModalContent></Modal>
     {f && <Box className="create-form" mt={3}><F label={t("نام دسته", "Group name")}><Input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></F>
       <Box mt={2} maxH="260px" overflowY="auto">{opts.map(m => <Box key={id(m)}><Checkbox isChecked={has(m)} onChange={e => setF({ ...f, members: e.target.checked ? [...f.members, m] : f.members.filter((y: any) => id(y) !== id(m)) })}>{m.label}</Checkbox></Box>)}</Box>
       <HStack mt={3}><Button size="sm" colorScheme="blue" isDisabled={!f.name.trim()} onClick={() => run(f.id ? `/api/inbounds/groups/${f.id}` : "/api/inbounds/groups", J(f.id ? "PUT" : "POST", { name: f.name, members: f.members }), () => setF(null))}>{t("ذخیره", "Save")}</Button><Button size="sm" onClick={() => setF(null)}>{t("انصراف", "Cancel")}</Button></HStack></Box>}

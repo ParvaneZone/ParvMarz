@@ -59,7 +59,7 @@ function App({prefs,setPrefs}:{prefs:Prefs;setPrefs:(p:Prefs)=>void}){
   const h=setTimeout(()=>{api("/api/admin/preferences",{method:"PUT",body}).then(()=>{lastPushed.current=body}).catch(()=>{})},600); return()=>clearTimeout(h)},[prefs,token,syncTick]);
  React.useEffect(()=>{document.documentElement.lang=lang;document.documentElement.dir=lang==="fa"?"rtl":"ltr";},[lang]);
  const login=async()=>{try{const d=await api("/api/admin/token",{method:"POST",body:JSON.stringify({username,password,...(need2fa?{otp}:{})})});if(d.two_factor_required){setNeed2fa(true);toast({title:t("کد دو مرحله‌ای را وارد کنید","Enter your 2FA code"),status:"info"});return}localStorage.setItem(TK,d.access_token);setToken(d.access_token);setNeed2fa(false);setOtp("");setPassword("");toast({title:t("ورود موفق بود","Signed in"),status:"success"})}catch(e){toast({title:errMsg(e),status:"error"})}};
- const users=useQuery({queryKey:["users",search,status],queryFn:()=>api(`/api/users?limit=100${search?`&q=${encodeURIComponent(search)}`:""}${status?`&status=${status}`:""}`),enabled:!!token});
+ const users=useQuery({queryKey:["users",search,status],queryFn:()=>api(`/api/users?limit=100${search?`&q=${encodeURIComponent(search)}`:""}${status?`&status=${status}`:""}`),enabled:!!token,placeholderData:(p:any)=>p});
  const panels=useQuery({queryKey:["panels"],queryFn:()=>api("/api/panels"),enabled:!!token&&tab==="panels"});
  const services=useQuery({queryKey:["services"],queryFn:()=>api("/api/services"),enabled:!!token&&(tab==="services"||showCreate)});
  const me=useQuery({queryKey:["me"],queryFn:()=>api("/api/admin"),enabled:!!token}); const isSudo=me.data?.role==="sudo";

@@ -42,6 +42,68 @@ def list_users(q:str|None=None,status:str|None=None,admin_id:int|None=None,servi
 def serialize_user(u,show_sub=True):
  token=issue_subscription_token(u.username,int(u.created_at.timestamp()),u.sub_token_version,user_id=u.id)
  return {'id':u.id,'username':u.username,'admin_id':u.admin_id,'service_id':u.service_id,'status':u.status,'data_limit':u.data_limit,'used_traffic':u.used_traffic,'expire':u.expire,'note':u.note,'created_at':u.created_at,'subscription_url':(f'{settings.sub_base_url}/sub/{token}' if settings.split_mode else f'/sub/{token}') if show_sub else None}
+def service_items(db,service_id):
+ """[(panel_id, selected_tags, priority)] from real panel items PLUS panels implied by attached groups (a groups-only service works)."""
+ from app.db.models import Setting
+ cur={}
+ for i in db.query(ServiceItem).filter_by(service_id=service_id,enabled=True).all():
+  sel=[str(x) for x in (i.selected_items or [])]
+  if i.panel_id in cur:
+   o=cur[i.panel_id]; cur[i.panel_id]=(None if (o[0] is None or not sel) else o[0]|set(sel),min(o[1],i.priority))
+  else: cur[i.panel_id]=(set(sel) if sel else None,i.priority)
+ ss=db.get(Setting,f'svc_groups:{service_id}'); gs=db.get(Setting,'link_groups')
+ want={str(x) for x in (ss.value.get('ids') or [])} if ss and isinstance(ss.value,dict) else set()
+ for g in ((gs.value.get('items') or []) if gs and isinstance(gs.value,dict) else []):
+  if str(g.get('id')) not in want: continue
+  for m in g.get('members',[]):
+   pid=m.get('panel_id')
+   if m.get('kind')=='inbound':
+    if pid not in cur: cur[pid]=({str(m.get('key'))},0)
+    elif cur[pid][0] is not None: cur[pid][0].add(str(m.get('key')))
+   elif pid not in cur: cur[pid]=(None,0)
+ return sorted(((pid,sorted(v[0]) if v[0] else [],v[1]) for pid,v in cur.items()),key=lambda x:x[2])
+def _payload(db,p,u,exp,selected,remote):
+ if exp is not None and exp.tzinfo is None: exp=exp.replace(tzinfo=timezone.utc)
+ cached=db.query(PanelInbound).filter_by(panel_id=p.id).all()
+ inbound_rows=[x for x in cached if x.kind=='inbound']; group_rows=[x for x in cached if x.kind=='group']
+ selected=set(str(x) for x in (selected or []))
+ def match(x): return str(x.id) in selected or str(x.remote_id) in selected or bool(x.tag and x.tag in selected)
+ chosen=[x for x in inbound_rows if match(x)] if selected else inbound_rows
+ base={'username':remote,'data_limit':u.data_limit,'expire':int(exp.timestamp()) if exp else 0,'status':u.status,'note':u.note}
+ if p.type in ('rebecca','pasarguard'):
+  legacy=[g for g in group_rows if match(g)] if selected else []
+  group=legacy[0] if legacy else pick_group(group_rows,{x.tag for x in chosen if x.tag})
+  if not group: raise HTTPException(409,detail={'detail':f'برای پنل {p.name} سرویس/گروهی پیدا نشد؛ پنل را همگام‌سازی کنید','code':'PANEL_SERVICE_REQUIRED'})
+  if p.type=='rebecca': base['service_id']=int(group.remote_id)
+  else: base['group_ids']=[int(group.remote_id)]
+  return base
+ if not chosen: raise HTTPException(409,detail={'detail':f'برای پنل {p.name} اینباندی در کش نیست؛ ابتدا همگام‌سازی کنید','code':'PANEL_INBOUNDS_EMPTY'})
+ inbound_map={}; protocols=set()
+ for inbound in chosen:
+  protocol=(inbound.protocol or 'vless').lower(); protocols.add(protocol)
+  if inbound.tag: inbound_map.setdefault(protocol,[]).append(inbound.tag)
+ base['inbounds']=inbound_map; base['proxies']={protocol:{} for protocol in (protocols or {'vless'})}
+ return base
+def move_user(db,u,service):
+ """Re-home a user on another service: drop remote accounts on panels it no longer uses, add new ones, re-assign the rest."""
+ from app.db.models import Setting
+ items=service_items(db,service.id)
+ if not items: raise HTTPException(409,detail={'detail':'برای سرویس مقصد پنل یا اینباندی تعریف نشده است','code':'SERVICE_EMPTY'})
+ old={a.panel_id:a for a in db.query(UserPanelAccount).filter_by(user_id=u.id).all()}; new={}
+ for pid,sel,_ in items:
+  p=db.get(Panel,pid)
+  if p and p.enabled and pid not in new: new[pid]=(p,sel)
+ for pid,a in old.items():
+  if pid not in new:
+   db.add(SyncTask(user_id=None,panel_id=pid,action='delete',payload={'username':a.remote_username,'admin_id':u.admin_id})); db.delete(a)
+ for pid,(p,sel) in new.items():
+  if pid in old: db.add(SyncTask(user_id=u.id,panel_id=pid,action='modify',payload=_payload(db,p,u,u.expire,sel,old[pid].remote_username)))
+  else:
+   remote=f'{p.username_prefix}{u.username}'
+   db.add(UserPanelAccount(user_id=u.id,panel_id=pid,remote_username=remote,sync_state='pending'))
+   db.add(SyncTask(user_id=u.id,panel_id=pid,action='create',payload=_payload(db,p,u,u.expire,sel,remote)))
+ u.service_id=service.id
+ for st in db.query(Setting).filter(Setting.key.like(f'subcache:{u.id}:%')).all(): db.delete(st)
 @router.post('/user',response_model=UserOut,summary='ساخت کاربر',description='حجم به بایت است. سرویس باید در allowed_services نماینده باشد و سهمیه‌ها (تعداد/حجم/مدت) بررسی می‌شود. ساخت روی پنل‌ها غیرهمزمان انجام می‌شود (sync-status را ببینید).',responses=errs(401,403,404,409))
 def create_user(body:UserIn,admin:Admin=Depends(require_perm('users.create')),db:Session=Depends(get_db)):
  allowed(admin,body.service_id)
@@ -72,38 +134,15 @@ def create_user(body:UserIn,admin:Admin=Depends(require_perm('users.create')),db
    raise HTTPException(403,detail={'detail':'مدت کاربر از سهمیه بیشتر است یا انقضای نامحدود مجاز نیست','code':'QUOTA_USER_DAYS'})
  u=User(username=body.username,admin_id=admin.id,service_id=body.service_id,data_limit=body.data_limit,expire=exp,on_hold_expire_duration=(body.duration_days*86400 if body.on_hold and body.duration_days else None),status='on_hold' if body.on_hold else body.status,data_limit_reset_strategy=body.data_limit_reset_strategy,note=body.note,next_plan=body.next_plan)
  db.add(u); db.flush()
- items=db.query(ServiceItem).filter_by(service_id=service.id,enabled=True).all()
+ items=service_items(db,service.id)
  if not items: raise HTTPException(409,detail={'detail':'برای این سرویس پنل یا اینباندی تعریف نشده است','code':'SERVICE_EMPTY'})
  seen=set()
- for item in sorted(items,key=lambda x:x.priority):
-  p=db.get(Panel,item.panel_id)
-  if not p or not p.enabled or p.id in seen: continue
-  seen.add(p.id); remote=f'{p.username_prefix}{u.username}'
+ for pid,sel,_ in items:
+  p=db.get(Panel,pid)
+  if not p or not p.enabled or pid in seen: continue
+  seen.add(pid); remote=f'{p.username_prefix}{u.username}'
   db.add(UserPanelAccount(user_id=u.id,panel_id=p.id,remote_username=remote,sync_state='pending'))
-  cached=db.query(PanelInbound).filter_by(panel_id=p.id).all()
-  inbound_rows=[x for x in cached if x.kind=='inbound']; group_rows=[x for x in cached if x.kind=='group']
-  selected=set(str(x) for x in (item.selected_items or []))
-  def match(x): return str(x.id) in selected or str(x.remote_id) in selected or bool(x.tag and x.tag in selected)
-  chosen=[x for x in inbound_rows if match(x)] if selected else inbound_rows
-  if p.type in ('rebecca','pasarguard'):
-   # Admins pick inbounds; the upstream still needs a service/group, resolved here from the chosen inbounds.
-   legacy=[g for g in group_rows if match(g)] if selected else []
-   group=legacy[0] if legacy else pick_group(group_rows,{x.tag for x in chosen if x.tag})
-   if not group: raise HTTPException(409,detail={'detail':f'برای پنل {p.name} سرویس/گروهی پیدا نشد؛ پنل را همگام‌سازی کنید','code':'PANEL_SERVICE_REQUIRED'})
-   payload={'username':remote,'data_limit':u.data_limit,'expire':int(exp.timestamp()) if exp else 0,'status':u.status,'note':u.note}
-   if p.type=='rebecca': payload['service_id']=int(group.remote_id)
-   else: payload['group_ids']=[int(group.remote_id)]
-  else:
-   if not chosen: raise HTTPException(409,detail={'detail':f'برای پنل {p.name} اینباندی در کش نیست؛ ابتدا همگام‌سازی کنید','code':'PANEL_INBOUNDS_EMPTY'})
-   inbound_map={}
-   protocols=set()
-   for inbound in chosen:
-    protocol=(inbound.protocol or 'vless').lower()
-    protocols.add(protocol)
-    if inbound.tag: inbound_map.setdefault(protocol,[]).append(inbound.tag)
-   proxies={protocol:{} for protocol in (protocols or {'vless'})}
-   payload={'username':remote,'data_limit':u.data_limit,'expire':int(exp.timestamp()) if exp else 0,'status':u.status,'note':u.note,'inbounds':inbound_map,'proxies':proxies}
-  db.add(SyncTask(user_id=u.id,panel_id=p.id,action='create',payload=payload))
+  db.add(SyncTask(user_id=u.id,panel_id=p.id,action='create',payload=_payload(db,p,u,exp,sel,remote)))
  db.add(AuditLog(actor_admin_id=admin.id,action='user.create',object_type='user',object_id=str(u.id),details={'username':u.username,'service_id':service.id})); db.commit(); db.refresh(u); return serialize_user(u,has_perm(admin,'users.view_sub'))
 class BulkCreate(BaseModel):
  prefix:Annotated[str,StringConstraints(min_length=1,max_length=100,pattern=r'^[A-Za-z0-9_.-]+$')]; count:int=Field(ge=1,le=100); start:int=Field(default=1,ge=0)
