@@ -310,7 +310,7 @@ class TgIdIn(BaseModel):
     telegram_id: str = Field(default="", max_length=40)
 
 
-@router.put("/telegram", summary="ثبت آیدی عددی تلگرام (بدون نیاز به لینک)", responses=errs(401, 403, 409, 422))
+@router.put("/telegram", summary="ثبت آیدی عددی تلگرام (بدون نیاز به لینک)", responses=errs(401, 403, 409))
 def telegram_set(body: TgIdIn, admin: Admin = Depends(session_admin), db: Session = Depends(get_db)):
     from app.core.tgbot import clean_tg_id, send_text_sync
     if not settings.telegram_bot_token: raise _err(409, "ربات تلگرام تنظیم نشده است (TELEGRAM_BOT_TOKEN)", "TELEGRAM_DISABLED")
