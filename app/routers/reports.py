@@ -33,9 +33,10 @@ def export_users(admin: Admin = Depends(require_perm("users.view")), db: Session
     q = db.query(User)
     if admin.role != "sudo": q = q.filter(User.admin_id == admin.id)
     buf = io.StringIO(); w = csv.writer(buf)
+    def safe(x): return "'" + x if isinstance(x, str) and x[:1] in ("=", "+", "-", "@", "\t", "\r") else x
     w.writerow(["username", "admin_id", "service_id", "status", "data_limit", "used_traffic", "expire", "created_at", "note"])
     for u in q.order_by(User.id):
-        w.writerow([u.username, u.admin_id, u.service_id, u.status, u.data_limit, u.used_traffic, u.expire, u.created_at, (u.note or "").replace("\n", " ")])
+        w.writerow([safe(u.username), u.admin_id, u.service_id, u.status, u.data_limit, u.used_traffic, u.expire, u.created_at, safe((u.note or "").replace("\n", " "))])
     buf.seek(0)
     return StreamingResponse(iter(["\ufeff" + buf.getvalue()]), media_type="text/csv",
                              headers={"Content-Disposition": "attachment; filename=users.csv"})

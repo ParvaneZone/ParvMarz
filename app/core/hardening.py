@@ -1,6 +1,7 @@
 """Pure-ASGI guards (no BaseHTTPMiddleware: lower memory, no body-streaming quirks)."""
 import json
 import re
+from app.core.netip import real_ip
 
 MAX_BODY = 2 * 1024 * 1024
 _CTRL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -112,6 +113,32 @@ class InputGuard:
         await self.app(scope, replay, send)
 
 
+class SubGuard:
+    """Per-IP brake on bad subscription tokens (404 flood) so token guessing / panel-fetch abuse is cut off at the app too."""
+    LIMIT, WINDOW = 40, 600
+
+    def __init__(self, app):
+        self.app = app
+        self.bad: dict[str, list[float]] = {}
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not scope.get("path", "").startswith("/sub/"):
+            return await self.app(scope, receive, send)
+        import time
+        from starlette.requests import Request
+        ip = real_ip(Request(scope)); now = time.time()
+        hits = [t for t in self.bad.get(ip, []) if now - t < self.WINDOW]
+        if len(hits) >= self.LIMIT:
+            return await _plain(send, 429)
+
+        async def watch(message):
+            if message["type"] == "http.response.start" and message["status"] in (404, 401):
+                if len(self.bad) > 5000: self.bad.clear()
+                self.bad[ip] = (hits + [time.time()])[-self.LIMIT:]
+            await send(message)
+        await self.app(scope, receive, watch)
+
+
 class SecureHeaders:
     def __init__(self, app, csp: str = "", hsts: bool = False):
         self.app = app
@@ -135,6 +162,8 @@ class SecureHeaders:
                     headers.append((b"content-security-policy", self.csp))
                 elif b"content-security-policy" not in have and path.startswith("/api"):
                     headers.append((b"content-security-policy", b"default-src 'none'; frame-ancestors 'none'"))
+                if path.startswith(("/api", "/dashboard")):
+                    headers += [h for h in ((b"cache-control", b"no-store"), (b"cross-origin-resource-policy", b"same-origin")) if h[0] not in have and not any(k == h[0] for k, _ in headers)]
                 message = {**message, "headers": headers}
             await send(message)
         await self.app(scope, receive, wrap)

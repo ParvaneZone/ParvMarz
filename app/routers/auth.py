@@ -4,14 +4,15 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.core.netip import real_ip
 from app.core import totp
 from app.core.crypto import decrypt_secret, encrypt_secret
-from app.core.security import hash_password, verify_password, create_access_token, current_admin, session_admin, SESSION_COOKIE
+from app.core.security import hash_password, verify_password, create_access_token, current_admin, session_admin, SESSION_COOKIE, strong_password
 from app.db.models import Admin, AuditLog, Service, User
 from app.db.session import get_db
 from app.schemas import AccountOut, OkOut, TokenOut, WhoAmIOut, errs
@@ -43,6 +44,7 @@ class LoginInput(BaseModel):
 class PasswordInput(BaseModel):
     current_password: str
     new_password: str = Field(min_length=12, max_length=72)
+    _pw = field_validator("new_password")(lambda cls, v: strong_password(v))
 
 
 def _err(status: int, detail: str, code: str) -> HTTPException:
@@ -76,7 +78,7 @@ def _check_second_factor(admin: Admin, code: str, db: Session) -> bool:
              responses=errs(401, 429))
 def login(body: LoginInput, request: Request, response: Response, db: Session = Depends(get_db)):
     limited = settings.login_rate_limit_enabled
-    ip = request.client.host if request.client else "unknown"
+    ip = real_ip(request)
     key = f"{ip}:{body.username.lower()}"
     now = time.time()
     attempts = [t for t in _lock_get(db, key) if now - t < settings.login_lock_seconds] if limited else []

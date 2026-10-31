@@ -11,8 +11,9 @@ class Settings(BaseSettings):
     subscription_hmac_key: str = "development-only-sub-key-change-me-32"
     credentials_encryption_key: str = ""
     public_base_url: str = "http://localhost:8000"
-    cors_origins: str = "http://localhost:5173"
+    cors_origins: str = ""
     openapi_enabled: bool = False
+    trust_proxy_headers: bool = True  # panel sits behind Cloudflare/nginx; firewall the origin to the proxy only
     panel_allow_private_addresses: bool = True
     sync_interval_seconds: int = 60
     log_level: str = "INFO"

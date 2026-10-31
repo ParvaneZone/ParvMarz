@@ -9,7 +9,7 @@ from app.config import settings
 from app.db.session import Base, engine, SessionLocal
 from app.db.models import Admin
 from app.core.security import hash_password
-from app.core.hardening import HostGuard, BlockSensitive, InputGuard, SecureHeaders, DASH_CSP
+from app.core.hardening import HostGuard, BlockSensitive, InputGuard, SecureHeaders, SubGuard, DASH_CSP
 from app.routers import auth, panels, system, subscription, admins, services, users, templates, bulk, inbounds, usage, ops, reports, api_keys, docs_api, geo
 from app.jobs.scheduler import start_scheduler, stop_scheduler
 
@@ -100,6 +100,7 @@ def dashboard():
 
 # outermost last: host check -> sensitive paths -> input guard -> headers
 app.add_middleware(SecureHeaders, csp=DASH_CSP, hsts=bool(settings.panel_domain))
+app.add_middleware(SubGuard)
 app.add_middleware(InputGuard)
 app.add_middleware(BlockSensitive)
 app.add_middleware(HostGuard, domain=settings.panel_domain)

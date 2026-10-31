@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from app.core.security import require_sudo, hash_password, admin_state
+from pydantic import field_validator
+from app.core.security import require_sudo, hash_password, admin_state, strong_password
 from app.core.crypto import encrypt_secret
 from app.db.models import AdminPanelAccess, Panel
 from app.db.models import Admin, User, AuditLog, Service
@@ -16,6 +17,7 @@ router = APIRouter(prefix='/api/admins', tags=['admins'])
 class AdminCreate(BaseModel):
     username: str = Field(min_length=3, max_length=80, pattern=r"^[A-Za-z0-9_.@-]+$")
     password: str = Field(min_length=12, max_length=72)
+    _pw = field_validator("password")(lambda cls, v: strong_password(v))
     role: str = 'admin'
     max_users: int | None = Field(default=None, ge=0)
     max_total_traffic: int | None = Field(default=None, ge=0)

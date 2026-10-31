@@ -50,7 +50,7 @@ def test_key_lifecycle_and_limits(env):
     assert c.get("/api/users", headers={"X-API-Key": key}).status_code == 200
     # key cannot manage keys / password / 2FA
     assert c.post("/api/admin/api-keys", json={"name": "x"}, headers={"X-API-Key": key}).status_code == 403
-    assert c.post("/api/admin/password", json={"current_password": "x" * 12, "new_password": "y" * 12}, headers={"X-API-Key": key}).status_code == 403
+    assert c.post("/api/admin/password", json={"current_password": "x" * 12, "new_password": "Yy1$" * 4}, headers={"X-API-Key": key}).status_code == 403
     for i in range(4):
         assert c.post("/api/admin/api-keys", json={"name": f"k{i}"}, headers=H(tok["agent"])).status_code == 200
     assert c.post("/api/admin/api-keys", json={"name": "extra"}, headers=H(tok["agent"])).status_code == 409

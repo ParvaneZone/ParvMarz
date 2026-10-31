@@ -9,6 +9,7 @@ from fastapi import Depends, Header, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 from app.config import settings
+from app.core.netip import real_ip
 from app.db.models import Admin, ApiKey
 from app.db.session import get_db
 
@@ -31,6 +32,13 @@ def verify_password(password: str, hashed: str) -> bool:
 
 
 SESSION_COOKIE = "jx_session"
+
+
+def strong_password(v: str) -> str:
+    """Lower + upper + digit + symbol are all required (symbols such as $ # @ ? !)."""
+    if not (any(c.islower() for c in v) and any(c.isupper() for c in v) and any(c.isdigit() for c in v) and any(not c.isalnum() for c in v)):
+        raise ValueError("رمز باید حرف کوچک، بزرگ، عدد و نماد ($#@?!) داشته باشد")
+    return v
 
 
 def create_access_token(admin: Admin) -> str:
@@ -57,7 +65,7 @@ def new_api_key() -> tuple[str, str, str]:
 
 
 def _key_fail(request: Request, code: str):
-    ip = request.client.host if request.client else "unknown"
+    ip = real_ip(request)
     now = time.time()
     hits = [t for t in _key_failures.get(ip, []) if now - t < 900] + [now]
     if len(_key_failures) > 2000:
@@ -68,7 +76,7 @@ def _key_fail(request: Request, code: str):
 
 
 def _admin_from_key(token: str, request: Request, db: Session) -> Admin:
-    ip = request.client.host if request.client else "unknown"
+    ip = real_ip(request)
     now = time.time()
     if len([t for t in _key_failures.get(ip, []) if now - t < 900]) >= 20:
         raise HTTPException(429, detail={"detail": "تلاش‌های ناموفق زیاد است؛ بعداً دوباره تلاش کنید", "code": "API_KEY_LOCKED"})

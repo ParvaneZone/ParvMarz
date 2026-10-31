@@ -17,6 +17,22 @@ function useRun({ api, t, toast }: Ctx, keys: string[]) {
   };
 }
 const F = ({ label, children }: { label: string; children: React.ReactNode }) => <FormControl><FormLabel>{label}</FormLabel>{children}</FormControl>;
+const genPw = (n = 16) => { // crypto-random; always has lower + upper + digit + symbol ($#@?!)
+  const L = "abcdefghijkmnopqrstuvwxyz", U = "ABCDEFGHJKLMNPQRSTUVWXYZ", D = "23456789", S = "$#@?!", ALL = L + U + D + S;
+  const r = (m: number) => { const a = new Uint32Array(1); let x: number; do { crypto.getRandomValues(a); x = a[0]; } while (x >= 4294967296 - (4294967296 % m)); return x % m; };
+  const out = [L[r(L.length)], U[r(U.length)], D[r(D.length)], S[r(S.length)]];
+  while (out.length < n) out.push(ALL[r(ALL.length)]);
+  for (let i = out.length - 1; i > 0; i--) { const j = r(i + 1); [out[i], out[j]] = [out[j], out[i]]; }
+  return out.join("");
+};
+const strongPw = (v: string) => v.length >= 12 && /[a-z]/.test(v) && /[A-Z]/.test(v) && /\d/.test(v) && /[^A-Za-z0-9]/.test(v);
+function PwField({ value, onChange, t, w }: { value: string; onChange: (v: string) => void; t: (fa: string, en: string) => string; w?: string }) {
+  const [show, setShow] = React.useState(false);
+  return <HStack maxW={w}><Input autoComplete="new-password" className="ltr" type={show ? "text" : "password"} value={value} onChange={e => onChange(e.target.value)} />
+    <Button size="sm" flexShrink={0} title={t("ساخت رمز تصادفی قوی", "Generate strong password")} onClick={() => { onChange(genPw()); setShow(true); }}>🎲 {t("ساخت", "Generate")}</Button>
+    <Button size="sm" flexShrink={0} variant="outline" onClick={() => setShow(!show)}>{show ? t("پنهان", "Hide") : t("نمایش", "Show")}</Button>
+    <Button size="sm" flexShrink={0} variant="outline" isDisabled={!value} onClick={() => void navigator.clipboard?.writeText(value)}>{t("کپی", "Copy")}</Button></HStack>;
+}
 const num = (v: string) => (v === "" ? null : Number(v));
 
 /* ---------------- Panels ---------------- */
@@ -207,6 +223,7 @@ export function AdminsTab(c: Ctx) {
     if (editId) return "";
     if (!/^[A-Za-z0-9_.-]{3,80}$/.test(f.username)) return t("نام کاربری: حداقل ۳ کاراکتر و فقط حروف انگلیسی/عدد/_ . -", "Username: min 3 chars, letters/digits/_ . - only");
     if ((f.password || "").length < 12) return t(`رمز: حداقل ۱۲ کاراکتر (الان ${(f.password || "").length})`, `Password: min 12 chars (now ${(f.password || "").length})`);
+    if (!strongPw(f.password || "")) return t("رمز باید حرف کوچک، بزرگ، عدد و نماد ($#@?!) داشته باشد", "Password needs lower, upper, digit and symbol ($#@?!)");
     for (const [k, l] of [["max_users", t("حداکثر کاربر", "Max users")], ["max_total_gb", t("سقف کل حجم", "Total cap")], ["max_user_gb", t("سقف حجم کاربر", "Per-user cap")], ["max_user_days", t("سقف روز", "Max days")]]) if (f[k] !== "" && !(Number(f[k]) >= 0)) return `${l}: ${t("عدد نامعتبر", "invalid number")}`;
     return "";
   };
@@ -223,7 +240,7 @@ export function AdminsTab(c: Ctx) {
     {f && <Box className="create-form" mb={4}>
       <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
         <F label={t("نام کاربری", "Username")}><Input className="ltr" isDisabled={!!editId} value={f.username} onChange={e => set("username", e.target.value)} /></F>
-        {!editId && <F label={t("رمز (حداقل ۱۲ کاراکتر)", "Password (min 12)")}><Input type="password" value={f.password} onChange={e => set("password", e.target.value)} /></F>}
+        {!editId && <F label={t("رمز عبور (حداقل ۱۲؛ حرف کوچک و بزرگ، عدد و نماد $#@?!)", "Password (min 12: upper, lower, digit, symbol $#@?!)")}><PwField t={t} value={f.password} onChange={v => set("password", v)} /></F>}
         {!editId && <F label={t("نقش", "Role")}><Select value={f.role} onChange={e => set("role", e.target.value)}><option value="admin">{t("ادمین (دسترسی محدود)", "Admin (limited)")}</option><option value="sudo">{t("مدیر اصلی (همه دسترسی‌ها)", "Sudo (full access)")}</option></Select></F>}
       </SimpleGrid>
       {isAdmin && <>
@@ -254,7 +271,7 @@ export function AdminsTab(c: Ctx) {
           <Button size="xs" onClick={() => confirm(t("مصرف کاربران صفر شود؟", "Reset usage?")) && run(`/api/admins/${a.id}/reset-usage`, J("POST"))}>{t("ریست مصرف", "Reset usage")}</Button>
         </HStack></Td></Tr>)}</Tbody></Table></Box>
     <Heading size="sm" mt={6} mb={2}>{t("تغییر رمز من", "Change my password")}</Heading>
-    <HStack flexWrap="wrap"><Input maxW="240px" type="password" placeholder={t("رمز فعلی", "Current")} value={pw.current_password} onChange={e => setPw({ ...pw, current_password: e.target.value })} /><Input maxW="240px" type="password" placeholder={t("رمز جدید", "New")} value={pw.new_password} onChange={e => setPw({ ...pw, new_password: e.target.value })} /><Button onClick={() => run("/api/admin/password", J("POST", pw), () => setPw({ current_password: "", new_password: "" }))}>{t("تغییر", "Change")}</Button></HStack>
+    <HStack flexWrap="wrap"><Input maxW="240px" type="password" placeholder={t("رمز فعلی", "Current")} value={pw.current_password} onChange={e => setPw({ ...pw, current_password: e.target.value })} /><PwField w="460px" t={t} value={pw.new_password} onChange={v => setPw({ ...pw, new_password: v })} /><Button onClick={() => run("/api/admin/password", J("POST", pw), () => setPw({ current_password: "", new_password: "" }))}>{t("تغییر", "Change")}</Button></HStack>
   </Box>;
 }
 
