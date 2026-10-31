@@ -87,9 +87,9 @@ def test_admin_create_errors_are_specific():
     r = c.post("/api/admins", json={"username": "ab", "password": "short"}, headers=h)
     d = r.json()["detail"]
     assert r.status_code == 422 and d["code"] == "VALIDATION_ERROR" and "رمز" in d["detail"] and "نام کاربری" in d["detail"]
-    r = c.post("/api/admins", json={"username": "newadmin", "password": "x" * 12, "permissions": {"nope": True}}, headers=h)
+    r = c.post("/api/admins", json={"username": "newadmin", "password": "Abcdefgh123!", "permissions": {"nope": True}}, headers=h)
     assert r.json()["detail"]["invalid_keys"] == ["nope"]
-    r = c.post("/api/admins", json={"username": "newadmin", "password": "x" * 12, "allowed_services": [999]}, headers=h)
+    r = c.post("/api/admins", json={"username": "newadmin", "password": "Abcdefgh123!", "allowed_services": [999]}, headers=h)
     assert r.json()["detail"]["code"] == "SERVICE_NOT_FOUND"
-    r = c.post("/api/admins", json={"username": "newadmin", "password": "x" * 12}, headers=h)
+    r = c.post("/api/admins", json={"username": "newadmin", "password": "Abcdefgh123!"}, headers=h)
     assert r.status_code == 200 and len(r.json()["warnings"]) == 2
