@@ -130,8 +130,11 @@ class SecureHeaders:
                 headers = list(message.get("headers", []))
                 have = {k.lower() for k, _ in headers}
                 headers += [h for h in self.base if h[0] not in have]
-                if self.csp and b"content-security-policy" not in have and scope.get("path", "").startswith("/dashboard"):
+                path = scope.get("path", "")
+                if self.csp and b"content-security-policy" not in have and path.startswith("/dashboard"):
                     headers.append((b"content-security-policy", self.csp))
+                elif b"content-security-policy" not in have and path.startswith("/api"):
+                    headers.append((b"content-security-policy", b"default-src 'none'; frame-ancestors 'none'"))
                 message = {**message, "headers": headers}
             await send(message)
         await self.app(scope, receive, wrap)

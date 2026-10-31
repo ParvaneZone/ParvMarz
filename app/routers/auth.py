@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core import totp
 from app.core.crypto import decrypt_secret, encrypt_secret
-from app.core.security import hash_password, verify_password, create_access_token, current_admin, session_admin
+from app.core.security import hash_password, verify_password, create_access_token, current_admin, session_admin, SESSION_COOKIE
 from app.db.models import Admin, AuditLog, Service, User
 from app.db.session import get_db
 from app.schemas import AccountOut, OkOut, TokenOut, WhoAmIOut, errs
@@ -74,7 +74,7 @@ def _check_second_factor(admin: Admin, code: str, db: Session) -> bool:
 @router.post("/token", response_model=TokenOut, response_model_exclude_unset=True, summary="ورود و دریافت توکن",
              description="با 2FA فعال و بدون otp، پاسخ `{two_factor_required: true}` است؛ همان درخواست را با otp تکرار کنید. بعد از ۵ تلاش ناموفق ۱۵ دقیقه قفل می‌شود (429).",
              responses=errs(401, 429))
-def login(body: LoginInput, request: Request, db: Session = Depends(get_db)):
+def login(body: LoginInput, request: Request, response: Response, db: Session = Depends(get_db)):
     limited = settings.login_rate_limit_enabled
     ip = request.client.host if request.client else "unknown"
     key = f"{ip}:{body.username.lower()}"
@@ -99,7 +99,16 @@ def login(body: LoginInput, request: Request, db: Session = Depends(get_db)):
         if not _check_second_factor(admin, otp, db):
             fail("کد دو مرحله‌ای نادرست است", "BAD_OTP")
     if limited and attempts: _lock_set(db, key, [])
-    return {"access_token": create_access_token(admin), "token_type": "bearer"}
+    tok = create_access_token(admin)
+    secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").split(",")[0].strip() == "https" or bool(settings.panel_domain)
+    response.set_cookie(SESSION_COOKIE, tok, max_age=settings.jwt_expire_minutes * 60, httponly=True, samesite="strict", secure=secure, path="/")
+    return {"access_token": tok, "token_type": "bearer"}
+
+
+@router.post("/logout")
+def logout(response: Response):
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return {"ok": True}
 
 
 @router.get("", response_model=WhoAmIOut, summary="اطلاعات ادمین جاری", responses=errs(401))

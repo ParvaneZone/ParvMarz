@@ -30,6 +30,9 @@ def verify_password(password: str, hashed: str) -> bool:
         return False
 
 
+SESSION_COOKIE = "jx_session"
+
+
 def create_access_token(admin: Admin) -> str:
     now = datetime.now(timezone.utc)
     return jwt.encode({"sub": str(admin.id), "username": admin.username, "role": admin.role,
@@ -96,6 +99,11 @@ def current_admin(
     db: Session = Depends(get_db),
 ) -> Admin:
     token = x_api_key or (creds.credentials if creds else None)
+    if not token and (token := request.cookies.get(SESSION_COOKIE)):
+        # Cookie sessions are CSRF-protected: unsafe methods must carry a custom header a cross-site form/page cannot send.
+        if request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get("x-requested-with") != "jx":
+            raise HTTPException(403, detail={"detail": "CSRF check failed", "code": "CSRF"})
+        if token.startswith(KEY_PREFIX): token = None
     if not token:
         raise HTTPException(401, detail={"detail": "احراز هویت لازم است", "code": "AUTH_REQUIRED"})
     if token.startswith(KEY_PREFIX):
