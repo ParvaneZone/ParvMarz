@@ -124,3 +124,10 @@ html[dir="rtl"] .scroll-progress{transform-origin:right}
 .to-top:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
 @media(max-width:600px){.to-top{bottom:14px;inset-inline-end:14px}.bg-layer.hv,.bg-layer.blobs.b{display:none}.bg-drift{animation:none}}
 @media(prefers-reduced-motion:reduce){.scroll-progress{display:none}.bg-drift{animation:none!important}.bg-layer{transition:none}.to-top{transition:none}}
+
+/* ---------- action buttons: larger, evenly spaced ---------- */
+.act-grp{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.act-grp>*{margin:0!important}
+.act-grp button,.shell td button.chakra-button{min-height:38px;min-width:76px;padding-inline:14px;font-size:14px;border-radius:10px;white-space:nowrap}
+.panel table td:last-child{min-width:260px}
+@media(max-width:600px){.act-grp{gap:6px}.act-grp button{flex:1 1 calc(50% - 6px);min-width:0}}

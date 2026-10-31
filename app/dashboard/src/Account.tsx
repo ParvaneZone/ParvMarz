@@ -95,6 +95,35 @@ function Meter({ label, value, max, text }: { label: string; value: number; max:
   return <Box><HStack justify="space-between" mb={1}><Text fontSize="sm" className="muted">{label}</Text><Text fontSize="sm" className="ltr" fontWeight={600}>{text}</Text></HStack>
     <Progress value={max ? pct : 0} size="sm" borderRadius="full" colorScheme={pct > 90 ? "red" : pct > 70 ? "orange" : "blue"} /></Box>;
 }
+
+function SubTemplateCard({ c }: { c: Ctx }) {
+  const { api, t, toast } = c; const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["sub-templates"], queryFn: () => api("/api/admin/sub-templates") });
+  const pick = async (id: string) => { try { await api("/api/admin/sub-template", J("PUT", { id })); await qc.invalidateQueries({ queryKey: ["sub-templates"] }); toast({ title: t("انجام شد", "Done"), status: "success" }); } catch (e) { toast({ title: msg(e), status: "error" }); } };
+  return <Box className="panel" mb={4}>
+    <Heading size="md" mb={1}>{t("قالب صفحه اشتراک کاربران", "Subscription page template")}</Heading>
+    <Text className="muted" mb={3}>{t("ظاهر صفحه‌ای که کاربران شما با باز کردن لینک اشتراک می‌بینند.", "Look of the page your users see when opening their link.")}</Text>
+    <HStack className="act-grp" spacing={0}>{(q.data?.items || []).map((x: any) => <Button key={x.id} colorScheme={q.data.current === x.id ? "blue" : undefined} variant={q.data.current === x.id ? "solid" : "outline"} isDisabled={!x.allowed} title={x.allowed ? "" : t("توسط مدیر اصلی فعال نشده", "Not enabled by the owner")} onClick={() => void pick(x.id)}>{x.label}</Button>)}</HStack>
+  </Box>;
+}
+
+function TelegramCard({ c }: { c: Ctx }) {
+  const { api, t, toast } = c; const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["tg"], queryFn: () => api("/api/admin/telegram") });
+  const [lnk, setLnk] = React.useState<{ code: string; url: string | null; bot: string | null } | null>(null);
+  const run = async (fn: () => Promise<void>) => { try { await fn(); await qc.invalidateQueries({ queryKey: ["tg"] }); } catch (e) { toast({ title: msg(e), status: "error" }); } };
+  if (!q.data?.enabled) return null;
+  return <Box className="panel" mb={4}>
+    <HStack justify="space-between" mb={2}><Heading size="md">{t("ربات تلگرام", "Telegram bot")}</Heading><Badge colorScheme={q.data.linked ? "green" : "gray"}>{q.data.linked ? t("متصل", "Linked") : t("متصل نیست", "Not linked")}</Badge></HStack>
+    <Text className="muted" mb={3}>{t("اعلان ورود، اتمام حجم/زمان و خطاها فقط برای اکانت خودتان ارسال می‌شود.", "Login, quota and expiry alerts are sent for your own account only.")}</Text>
+    <HStack className="act-grp" spacing={0}>
+      <Button colorScheme="blue" onClick={() => void run(async () => setLnk(await api("/api/admin/telegram/link", J("POST"))))}>{q.data.linked ? t("اتصال مجدد", "Re-link") : t("اتصال", "Link")}</Button>
+      {q.data.linked && <Button colorScheme="red" variant="outline" onClick={() => void run(async () => { await api("/api/admin/telegram", J("DELETE")); setLnk(null); })}>{t("قطع اتصال", "Unlink")}</Button>}
+    </HStack>
+    {lnk && <Box mt={3}>{lnk.url ? <Button as="a" href={lnk.url} target="_blank" rel="noopener noreferrer" colorScheme="green">{t("باز کردن در تلگرام", "Open in Telegram")}</Button> : <Text>{t("به ربات این پیام را بفرستید:", "Send this to the bot:")} <Code>/start {lnk.code}</Code></Text>}
+      <Text className="muted" mt={2}>{t("لینک یک‌بارمصرف و ۱۰ دقیقه معتبر است.", "One-time link, valid for 10 minutes.")}</Text></Box>}
+  </Box>;
+}
 export function AccountTab({ c, prefs, setPrefs }: { c: Ctx; prefs: Prefs; setPrefs: (p: Prefs) => void }) {
   const { api, t } = c; const qc = useQueryClient();
   const q = useQuery({ queryKey: ["account"], queryFn: () => api("/api/admin/account") });
@@ -136,6 +165,8 @@ export function AccountTab({ c, prefs, setPrefs }: { c: Ctx; prefs: Prefs; setPr
       </>}
     </Box>
     <AppearanceCard c={c} prefs={prefs} setPrefs={setPrefs} />
+    <SubTemplateCard c={c} />
+    <TelegramCard c={c} />
     {d && <TwoFactorCard c={c} enabled={!!d.totp_enabled} left={d.recovery_codes_left || 0} refresh={refresh} />}
   </Box>;
 }

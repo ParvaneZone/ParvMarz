@@ -76,7 +76,9 @@ def _link_card(p: dict) -> str:
 def render_subscription_page(*, nonce: str, brand: str, username: str, state: str, used: int, limit: int | None,
                              expire: int, created: int, now: int, online_at: int | None, service: str,
                              reset: str, on_hold_days: int | None, links: list[dict], sub_url: str,
-                             qr_svg: str = "") -> str:
+                             qr_svg: str = "", template: str = "classic") -> str:
+    from app.subscription.themes import THEMES, theme_css
+    tpl = template if template in THEMES else "classic"
     label, tone = STATUS.get(state, (state, "mute"))
     pct = 0 if not limit else min(100.0, used * 100.0 / limit)
     remaining = None if limit is None else max(0, limit - used)
@@ -192,7 +194,7 @@ ol.steps{{margin:0;padding:0 20px 0 0;color:var(--mu)}}ol.steps li{{margin-botto
 .toast{{position:fixed;inset-inline:0;bottom:22px;margin:auto;width:max-content;max-width:90vw;background:var(--fg);color:var(--bg);padding:9px 18px;border-radius:99px;font-weight:700;opacity:0;transform:translateY(10px);transition:.25s;pointer-events:none}}.toast.on{{opacity:1;transform:none}}
 @media(max-width:520px){{.ring{{margin:0 auto}}.uname{{font-size:19px}}.cfg{{flex-wrap:wrap}}.cfg .btn{{width:100%}}}}
 @media(prefers-reduced-motion:reduce){{*{{transition:none!important}}}}
-</style></head><body>
+{theme_css(tpl)}</style></head><body class="t-{tpl}">
 <div class="wrap">
  <div class="top"><div class="brand">{e(brand)}</div><button class="btn sm" id="theme" type="button" aria-label="تم">🌓 تم</button></div>
  {alerts_html}

@@ -29,9 +29,15 @@ CATALOG = [
         ("templates.view", "مشاهده قالب‌ها"),
         ("sub.off_inbound", "نمایش اینباند خاموش به کاربران منقضی/اتمام حجم"),
     ]),
+    ("قالب‌های صفحه اشتراک", [
+        ("sub.tpl.aurora", "قالب شفق (شیشه‌ای)"),
+        ("sub.tpl.midnight", "قالب نئون شبانه"),
+        ("sub.tpl.paper", "قالب مینیمال کاغذی"),
+        ("sub.tpl.sunset", "قالب غروب (دو ستونه)"),
+    ]),
 ]
 KEYS = {k for _, items in CATALOG for k, _ in items}
-DEFAULT_OFF = {"sub.off_inbound", "users.create_bulk"}
+DEFAULT_OFF = {"sub.off_inbound", "users.create_bulk", "sub.tpl.aurora", "sub.tpl.midnight", "sub.tpl.paper", "sub.tpl.sunset"}
 LEGACY_KEYS = {"users.view", "users.create", "users.edit", "users.delete", "users.reset", "users.revoke_sub", "users.next_plan"}
 
 

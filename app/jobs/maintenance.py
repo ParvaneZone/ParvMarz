@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from app.config import settings
 from app.core.notify import notify_event
-from app.db.models import Setting, SyncTask, User, UserPanelAccount, AuditLog
+from sqlalchemy import func
+from app.db.models import Admin, Setting, SyncTask, User, UserPanelAccount, AuditLog
 from app.db.session import SessionLocal
 
 
@@ -75,3 +76,30 @@ def trim_memory() -> None:
         ctypes.CDLL("libc.so.6").malloc_trim(0)
     except Exception:
         pass
+
+
+def check_admins() -> int:
+    """Notify (once per state) when an agent's account expires / is about to expire / used up its total traffic."""
+    now = datetime.now(timezone.utc); sent = 0
+    def once(db, a, kind, mark, event, data):
+        nonlocal sent
+        key = f"adminwarn:{a.id}:{kind}"; s = db.get(Setting, key)
+        if s and s.value.get("m") == mark: return
+        db.merge(Setting(key=key, value={"m": mark})); notify_event(event, {"username": a.username, **data, "admin_id": a.id}); sent += 1
+    def clear(db, a, kind):
+        s = db.get(Setting, f"adminwarn:{a.id}:{kind}")
+        if s: db.delete(s)
+    with SessionLocal() as db:
+        for a in db.query(Admin).filter(Admin.role != "sudo", Admin.disabled.is_(False)).all():
+            if a.expire is not None:
+                exp = a.expire if a.expire.tzinfo else a.expire.replace(tzinfo=timezone.utc); stamp = int(exp.timestamp())
+                if exp <= now: once(db, a, "expired", stamp, "admin.expired", {"expire": exp.isoformat()})
+                elif exp <= now + timedelta(days=settings.expiry_warn_days): once(db, a, "expiring", stamp, "admin.expiring", {"expire": exp.isoformat()})
+                else: clear(db, a, "expiring"); clear(db, a, "expired")
+            else: clear(db, a, "expiring"); clear(db, a, "expired")
+            if a.max_total_traffic:
+                used = int(db.query(func.coalesce(func.sum(User.used_traffic), 0)).filter(User.admin_id == a.id).scalar() or 0)
+                if used >= a.max_total_traffic: once(db, a, "traffic", int(a.max_total_traffic), "admin.traffic_full", {"used": used, "limit": a.max_total_traffic})
+                else: clear(db, a, "traffic")
+        db.commit()
+    return sent

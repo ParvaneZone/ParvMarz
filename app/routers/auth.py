@@ -13,7 +13,8 @@ from app.core.netip import real_ip
 from app.core import totp
 from app.core.crypto import decrypt_secret, encrypt_secret
 from app.core.security import hash_password, verify_password, create_access_token, current_admin, session_admin, SESSION_COOKIE, strong_password
-from app.db.models import Admin, AuditLog, Service, User
+from app.db.models import Admin, AuditLog, Service, User, Setting
+from app.core.notify import notify_event
 from app.db.session import get_db
 from app.schemas import AccountOut, OkOut, TokenOut, WhoAmIOut, errs
 
@@ -85,10 +86,15 @@ def login(body: LoginInput, request: Request, response: Response, db: Session = 
     if limited and len(attempts) >= settings.login_max_attempts:
         raise HTTPException(429, detail={"detail": "تلاش‌های ورود زیاد است؛ ۱۵ دقیقه بعد دوباره تلاش کنید", "code": "LOGIN_LOCKED"})
 
+    admin = None
+
     def fail(detail: str, code: str):
         if limited:
             attempts.append(now)
             _lock_set(db, key, attempts)
+        if admin is not None:  # only for real accounts (unknown usernames would let anyone spam the chat)
+            ev = "admin.locked" if limited and len(attempts) >= settings.login_max_attempts else "admin.login_failed"
+            notify_event(ev, {"username": admin.username, "ip": ip, "reason": code, "admin_id": admin.id})
         raise _err(401, detail, code)
 
     admin = db.query(Admin).filter(func.lower(Admin.username) == body.username.lower()).first()
@@ -101,6 +107,7 @@ def login(body: LoginInput, request: Request, response: Response, db: Session = 
         if not _check_second_factor(admin, otp, db):
             fail("کد دو مرحله‌ای نادرست است", "BAD_OTP")
     if limited and attempts: _lock_set(db, key, [])
+    notify_event("admin.login", {"username": admin.username, "ip": ip, "time": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"), "admin_id": admin.id})
     tok = create_access_token(admin)
     secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").split(",")[0].strip() == "https" or bool(settings.panel_domain)
     response.set_cookie(SESSION_COOKIE, tok, max_age=settings.jwt_expire_minutes * 60, httponly=True, samesite="strict", secure=secure, path="/")
@@ -269,3 +276,44 @@ def twofa_disable(body: TwoFADisableInput, admin: Admin = Depends(session_admin)
                     object_id=str(admin.id), details={}))
     db.commit()
     return {"ok": True}
+
+
+# ----------------------------------------------------------------------------- subscription-page template
+class TemplateIn(BaseModel):
+    id: str = Field(max_length=32)
+
+
+@router.get("/sub-templates", summary="قالب‌های صفحه اشتراک و قالب فعلی من", responses=errs(401))
+def sub_templates(admin: Admin = Depends(current_admin), db: Session = Depends(get_db)):
+    from app.subscription.themes import THEMES, allowed_templates, resolve_template
+    ok = set(allowed_templates(admin))
+    return {"current": resolve_template(db, admin.id), "items": [{"id": k, "label": v["label"], "allowed": k in ok} for k, v in THEMES.items()]}
+
+
+@router.put("/sub-template", response_model=OkOut, summary="انتخاب قالب صفحه اشتراک کاربران من", responses=errs(401, 403, 422))
+def set_sub_template(body: TemplateIn, admin: Admin = Depends(current_admin), db: Session = Depends(get_db)):
+    from app.subscription.themes import THEMES, allowed_templates
+    if body.id not in THEMES: raise _err(422, "قالب نامعتبر است", "INVALID_TEMPLATE")
+    if body.id not in allowed_templates(admin): raise _err(403, "این قالب برای شما فعال نیست", "PERMISSION_DENIED")
+    db.merge(Setting(key=f"subtpl:{admin.id}", value={"id": body.id}))
+    db.add(AuditLog(actor_admin_id=admin.id, action="admin.sub_template", object_type="admin", object_id=str(admin.id), details={"id": body.id}))
+    db.commit(); return {"ok": True}
+
+
+# ----------------------------------------------------------------------------- Telegram bot link
+@router.get("/telegram", summary="وضعیت اتصال ربات تلگرام", responses=errs(401))
+def telegram_status(admin: Admin = Depends(current_admin)):
+    return {"enabled": bool(settings.telegram_bot_token), "linked": bool(admin.telegram_id)}
+
+
+@router.post("/telegram/link", summary="ساخت لینک اتصال یک‌بارمصرف ربات (۱۰ دقیقه)", responses=errs(401, 403, 409))
+def telegram_link(admin: Admin = Depends(session_admin), db: Session = Depends(get_db)):
+    from app.core.tgbot import make_link_code, bot_username, CODE_TTL
+    if not settings.telegram_bot_token: raise _err(409, "ربات تلگرام تنظیم نشده است (TELEGRAM_BOT_TOKEN)", "TELEGRAM_DISABLED")
+    code = make_link_code(db, admin); name = bot_username()
+    return {"code": code, "expires_in": CODE_TTL, "bot": name, "url": f"https://t.me/{name}?start={code}" if name else None}
+
+
+@router.delete("/telegram", response_model=OkOut, summary="قطع اتصال ربات تلگرام", responses=errs(401, 403))
+def telegram_unlink(admin: Admin = Depends(session_admin), db: Session = Depends(get_db)):
+    admin.telegram_id = None; db.commit(); return {"ok": True}

@@ -90,6 +90,7 @@ def move_user(db,u,service):
  items=service_items(db,service.id)
  if not items: raise HTTPException(409,detail={'detail':'برای سرویس مقصد پنل یا اینباندی تعریف نشده است','code':'SERVICE_EMPTY'})
  old={a.panel_id:a for a in db.query(UserPanelAccount).filter_by(user_id=u.id).all()}; new={}
+ left=None if u.data_limit is None else max(0,int(u.data_limit)-int(u.used_traffic or 0))
  for pid,sel,_ in items:
   p=db.get(Panel,pid)
   if p and p.enabled and pid not in new: new[pid]=(p,sel)
@@ -97,11 +98,16 @@ def move_user(db,u,service):
   if pid not in new:
    db.add(SyncTask(user_id=None,panel_id=pid,action='delete',payload={'username':a.remote_username,'admin_id':u.admin_id})); db.delete(a)
  for pid,(p,sel) in new.items():
-  if pid in old: db.add(SyncTask(user_id=u.id,panel_id=pid,action='modify',payload=_payload(db,p,u,u.expire,sel,old[pid].remote_username)))
+  if pid in old:
+   pl=_payload(db,p,u,u.expire,sel,old[pid].remote_username)
+   if left is not None: pl['data_limit']=int(old[pid].last_remote_used_traffic or 0)+left
+   db.add(SyncTask(user_id=u.id,panel_id=pid,action='modify',payload=pl))
   else:
    remote=f'{p.username_prefix}{u.username}'
+   pl=_payload(db,p,u,u.expire,sel,remote)
+   if left is not None: pl['data_limit']=max(left,1)
    db.add(UserPanelAccount(user_id=u.id,panel_id=pid,remote_username=remote,sync_state='pending'))
-   db.add(SyncTask(user_id=u.id,panel_id=pid,action='create',payload=_payload(db,p,u,u.expire,sel,remote)))
+   db.add(SyncTask(user_id=u.id,panel_id=pid,action='create',payload=pl))
  u.service_id=service.id
  for st in db.query(Setting).filter(Setting.key.like(f'subcache:{u.id}:%')).all(): db.delete(st)
 @router.post('/user',response_model=UserOut,summary='ساخت کاربر',description='حجم به بایت است. سرویس باید در allowed_services نماینده باشد و سهمیه‌ها (تعداد/حجم/مدت) بررسی می‌شود. ساخت روی پنل‌ها غیرهمزمان انجام می‌شود (sync-status را ببینید).',responses=errs(401,403,404,409))
@@ -167,6 +173,13 @@ def update_user(username:str,body:UserUpdate,admin:Admin=Depends(require_perm('u
  u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()
  if not u: raise HTTPException(404,detail={'detail':'کاربر پیدا نشد','code':'USER_NOT_FOUND'})
  fields={'status','data_limit','expire','note','data_limit_reset_strategy','next_plan','on_hold_expire_duration','on_hold_timeout'}
+ new_service=None
+ if 'service_id' in body:
+  try: sid=int(body.pop('service_id'))
+  except (TypeError,ValueError): raise HTTPException(422,detail={'detail':'سرویس نامعتبر است','code':'INVALID_FIELD'})
+  if sid!=u.service_id:
+   allowed(admin,sid); new_service=db.get(Service,sid)
+   if not new_service or not new_service.enabled: raise HTTPException(404,detail={'detail':'سرویس فعال پیدا نشد','code':'SERVICE_NOT_FOUND'})
  need={'status':'users.edit_status','data_limit':'users.edit_traffic','expire':'users.edit_expire','note':'users.edit_note'}
  for k in body:
   if k in need and not has_perm(admin,need[k]): raise HTTPException(403,detail={'detail':'این دسترسی برای شما فعال نیست','code':'PERMISSION_DENIED'})
@@ -190,13 +203,16 @@ def update_user(username:str,body:UserUpdate,admin:Admin=Depends(require_perm('u
   if k not in fields: raise HTTPException(422,detail={'detail':f'فیلد مجاز نیست: {k}','code':'INVALID_FIELD'})
   if k=='status' and v not in ('active','disabled','limited','expired','on_hold'): raise HTTPException(422,detail={'detail':'وضعیت نامعتبر است','code':'INVALID_STATUS'})
   setattr(u,k,v)
- if 'status' in body or 'data_limit' in body or 'expire' in body:
-  for a in db.query(UserPanelAccount).filter_by(user_id=u.id).all(): db.add(SyncTask(user_id=u.id,panel_id=a.panel_id,action='modify',payload={'username':a.remote_username,'status':u.status,'data_limit':u.data_limit,'expire':int(u.expire.timestamp()) if u.expire else 0}))
+ if new_service:
+  db.flush(); move_user(db,u,new_service)
+ elif 'status' in body or 'data_limit' in body or 'expire' in body:
+  left=None if u.data_limit is None else max(0,int(u.data_limit)-int(u.used_traffic or 0))
+  for a in db.query(UserPanelAccount).filter_by(user_id=u.id).all(): db.add(SyncTask(user_id=u.id,panel_id=a.panel_id,action='modify',payload={'username':a.remote_username,'status':u.status,'data_limit':u.data_limit if left is None else int(a.last_remote_used_traffic or 0)+left,'expire':int(u.expire.timestamp()) if u.expire else 0}))
  if 'data_limit_reset_strategy' in body:
   from app.db.models import Setting
   s=db.get(Setting,f'user_reset:{u.id}')
   if s: db.delete(s)
- db.add(AuditLog(actor_admin_id=admin.id,action='user.update',object_type='user',object_id=str(u.id),details={'fields':list(body)})); db.commit(); return serialize_user(u,has_perm(admin,'users.view_sub'))
+ db.add(AuditLog(actor_admin_id=admin.id,action='user.update',object_type='user',object_id=str(u.id),details={'fields':list(body)+(['service_id'] if new_service else []),**({'service_id':new_service.id} if new_service else {})})); db.commit(); return serialize_user(u,has_perm(admin,'users.view_sub'))
 @router.delete('/user/{username}',response_model=OkOut,summary='حذف کاربر',responses=errs(401,403,404))
 def delete_user(username:str,admin:Admin=Depends(require_perm('users.delete')),db:Session=Depends(get_db)):
  u=user_scope(db,admin).filter(func.lower(User.username)==username.lower()).first()

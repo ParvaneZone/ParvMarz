@@ -47,6 +47,15 @@ _TYPES = {"string_too_short": "کوتاه‌تر از حد مجاز است (حد
           "dict_type": "باید شیء (dict) باشد", "string_type": "باید متن باشد", "json_invalid": "JSON نامعتبر است"}
 
 
+@app.exception_handler(Exception)
+async def unhandled_error(request, exc: Exception):
+    import logging
+    from app.core.notify import report_error
+    logging.getLogger("jinxdata").error("unhandled %s on %s %s", type(exc).__name__, request.method, request.url.path)
+    report_error(request.url.path[:120], type(exc).__name__, request.method)
+    return JSONResponse({"detail": "Internal Server Error"}, status_code=500)
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_error(request, exc: RequestValidationError):
     fields = []

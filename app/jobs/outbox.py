@@ -7,6 +7,7 @@ from app.drivers.factory import build_driver
 from app.drivers.base import RemoteOutcomeUnknown
 from app.core.errors import short_error
 import logging
+from app.core.notify import notify_event
 log=logging.getLogger('jinxdata.outbox')
 
 async def process_one(task_id:int)->bool:
@@ -18,7 +19,7 @@ async def process_one(task_id:int)->bool:
    task.attempts += 1
    task.last_error = 'panel unavailable'
    if task.attempts >= 8:
-    task.state = 'failed'
+    task.state = 'failed'; notify_event('sync.failed',{'action':task.action,'panel':task.panel_id,'attempts':task.attempts,'error':(task.last_error or '')[:200]})
    else:
     task.state = 'pending'
     task.next_attempt_at = datetime.now(timezone.utc) + timedelta(seconds=min(3600, 2 ** min(task.attempts, 10)))
@@ -45,8 +46,8 @@ async def process_one(task_id:int)->bool:
    db.commit(); return True
   except RemoteOutcomeUnknown:
    task.attempts += 1
-   task.state = 'failed'
    task.last_error = 'remote outcome unknown; verify upstream panel before retrying'
+   task.state = 'failed'; notify_event('sync.failed',{'action':task.action,'panel':task.panel_id,'attempts':task.attempts,'error':task.last_error})
    db.commit()
    return False
   except Exception as exc:
@@ -54,7 +55,7 @@ async def process_one(task_id:int)->bool:
    task.last_error = short_error(exc)
    log.warning('sync task %s (%s, panel %s) failed: %s',task.id,task.action,task.panel_id,task.last_error)
    if task.attempts >= 8:
-    task.state = 'failed'
+    task.state = 'failed'; notify_event('sync.failed',{'action':task.action,'panel':task.panel_id,'attempts':task.attempts,'error':(task.last_error or '')[:200]})
    else:
     task.state = 'pending'
     task.next_attempt_at = datetime.now(timezone.utc) + timedelta(seconds=min(3600, 2 ** min(task.attempts, 10)))
