@@ -18,7 +18,7 @@ import logging
 log=logging.getLogger('jinxdata.sub')
 _fetch_err:dict[int,str]={}
 from app.subscription.merge import deduplicate_links, apply_aliases, apply_config_names, link_member_keys, to_clash, to_singbox, to_v2ray_json
-from app.subscription.pick import pick_links, pick_from_groups
+from app.subscription.pick import pick_from_groups
 from app.subscription.geo import client_ip, spawn_record
 from app.subscription.page import render_subscription_page
 router=APIRouter(tags=['subscription'])
