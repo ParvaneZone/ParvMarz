@@ -10,12 +10,10 @@ from app.jobs.reset_usage import reset_usage_job
 from app.jobs.health_check import check_panels
 from app.jobs.backup import backup_database
 from app.jobs.maintenance import warn_expiring, delete_old_expired, prune_data, trim_memory, check_admins
-from app.core.tgbot import poll_updates
 
 scheduler=AsyncIOScheduler(timezone='UTC') if AsyncIOScheduler else None
 async def _outbox(): await drain_outbox()
 async def _usage(): await sync_usage()
-async def _tg(): await poll_updates()
 def _reconcile(): reconcile()
 def _reset(): reset_usage_job()
 async def _health(): await check_panels()
@@ -32,7 +30,6 @@ def start_scheduler():
  if scheduler.running: return
  scheduler.add_job(_outbox,'interval',seconds=10,id='outbox',replace_existing=True,max_instances=1)
  scheduler.add_job(_usage,'interval',seconds=max(30,settings.sync_interval_seconds),id='usage',replace_existing=True,max_instances=1)
- scheduler.add_job(_tg,'interval',seconds=5,id='tgbot',replace_existing=True,max_instances=1)
  scheduler.add_job(check_admins,'interval',minutes=30,id='check_admins',replace_existing=True,max_instances=1)
  scheduler.add_job(_reconcile,'interval',minutes=5,id='reconcile',replace_existing=True,max_instances=1)
  scheduler.add_job(_reset,'interval',minutes=5,id='reset',replace_existing=True,max_instances=1)

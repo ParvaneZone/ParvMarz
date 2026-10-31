@@ -306,12 +306,12 @@ def telegram_status(admin: Admin = Depends(current_admin)):
     return {"enabled": bool(settings.telegram_bot_token), "linked": bool(admin.telegram_id)}
 
 
-@router.post("/telegram/link", summary="ساخت لینک اتصال یک‌بارمصرف ربات (۱۰ دقیقه)", responses=errs(401, 403, 409))
+@router.post("/telegram/link", summary="ساخت لینک اتصال یک‌بارمصرف ربات", responses=errs(401, 403, 409))
 def telegram_link(admin: Admin = Depends(session_admin), db: Session = Depends(get_db)):
-    from app.core.tgbot import make_link_code, bot_username, CODE_TTL
+    from app.core.tgbot import make_link_code, bot_username
     if not settings.telegram_bot_token: raise _err(409, "ربات تلگرام تنظیم نشده است (TELEGRAM_BOT_TOKEN)", "TELEGRAM_DISABLED")
     code = make_link_code(db, admin); name = bot_username()
-    return {"code": code, "expires_in": CODE_TTL, "bot": name, "url": f"https://t.me/{name}?start={code}" if name else None}
+    return {"code": code, "bot": name, "url": f"https://t.me/{name}?start={code}" if name else None}
 
 
 @router.delete("/telegram", response_model=OkOut, summary="قطع اتصال ربات تلگرام", responses=errs(401, 403))

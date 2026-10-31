@@ -121,7 +121,7 @@ function TelegramCard({ c }: { c: Ctx }) {
       {q.data.linked && <Button colorScheme="red" variant="outline" onClick={() => void run(async () => { await api("/api/admin/telegram", J("DELETE")); setLnk(null); })}>{t("قطع اتصال", "Unlink")}</Button>}
     </HStack>
     {lnk && <Box mt={3}>{lnk.url ? <Button as="a" href={lnk.url} target="_blank" rel="noopener noreferrer" colorScheme="green">{t("باز کردن در تلگرام", "Open in Telegram")}</Button> : <Text>{t("به ربات این پیام را بفرستید:", "Send this to the bot:")} <Code>/start {lnk.code}</Code></Text>}
-      <Text className="muted" mt={2}>{t("لینک یک‌بارمصرف و ۱۰ دقیقه معتبر است.", "One-time link, valid for 10 minutes.")}</Text></Box>}
+      <Text className="muted" mt={2}>{t("لینک یک‌بارمصرف است.", "One-time link.")}</Text></Box>}
   </Box>;
 }
 export function AccountTab({ c, prefs, setPrefs }: { c: Ctx; prefs: Prefs; setPrefs: (p: Prefs) => void }) {

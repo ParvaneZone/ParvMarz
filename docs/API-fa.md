@@ -81,8 +81,8 @@ print(u["subscription_url"])
 - ادمین قالب کاربران خودش را انتخاب می‌کند: `GET /api/admin/sub-templates` و `PUT /api/admin/sub-template` با `{"id":"aurora"}`. اگر دسترسی برداشته شود، به `classic` برمی‌گردد.
 
 ## ربات تلگرام اعلان‌ها
-1. در `.env`: `TELEGRAM_BOT_TOKEN=<توکن BotFather>` (اختیاری: `TELEGRAM_ADMIN_CHAT_ID` برای چت مدیر اصلی).
-2. هر ادمین از «اکانت من ← ربات تلگرام ← اتصال» لینک یک‌بارمصرف (۱۰ دقیقه) می‌گیرد و در تلگرام Start می‌زند. چت بدون اتصال هیچ پیامی نمی‌گیرد.
+1. در `.env`: `TELEGRAM_BOT_TOKEN=<توکن BotFather>` (اختیاری: `TELEGRAM_ADMIN_CHAT_ID`). ربات با **وب‌هوک** کار می‌کند و پنل خودش موقع بالا آمدن وب‌هوک را روی `PUBLIC_BASE_URL/api/telegram/webhook` ست می‌کند؛ پس `PUBLIC_BASE_URL` باید HTTPS عمومی (پورت ۴۴۳/۸۰/۸۸/۸۴۴۳) باشد.
+2. هر ادمین از «اکانت من ← ربات تلگرام ← اتصال» لینک یک‌بارمصرف می‌گیرد و در تلگرام Start می‌زند. چت بدون اتصال هیچ پیامی نمی‌گیرد.
 3. دستورها: `/status` وضعیت اکانت، `/stop` قطع اتصال، `/help`.
 4. API: `GET /api/admin/telegram`، `POST /api/admin/telegram/link`، `DELETE /api/admin/telegram` (فقط با ورود عادی، نه کلید API).
 

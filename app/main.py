@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,7 +11,7 @@ from app.db.session import Base, engine, SessionLocal
 from app.db.models import Admin
 from app.core.security import hash_password
 from app.core.hardening import HostGuard, BlockSensitive, InputGuard, SecureHeaders, SubGuard, DASH_CSP
-from app.routers import auth, panels, system, subscription, admins, services, users, templates, bulk, inbounds, usage, ops, reports, api_keys, docs_api, geo
+from app.routers import auth, panels, system, subscription, admins, services, users, templates, bulk, inbounds, usage, ops, reports, api_keys, docs_api, geo, telegram
 from app.jobs.scheduler import start_scheduler, stop_scheduler
 
 @asynccontextmanager
@@ -26,6 +27,8 @@ async def lifespan(_: FastAPI):
                 db.commit()
     if settings.environment != "test":
         start_scheduler()
+        from app.core.tgbot import set_webhook
+        _wh = asyncio.create_task(set_webhook())  # noqa: F841 - fire and forget
     yield
     if settings.environment != "test":
         stop_scheduler()
@@ -87,6 +90,7 @@ app.include_router(ops.router)
 app.include_router(api_keys.router)
 app.include_router(docs_api.router)
 app.include_router(geo.router)
+app.include_router(telegram.router)
 app.include_router(reports.router)
 
 _dist = Path(__file__).parent / "dashboard" / "dist"

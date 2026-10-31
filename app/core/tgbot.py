@@ -1,9 +1,9 @@
 """Telegram bot (long-polling via getUpdates). An admin links a chat with a one-time code created in the dashboard;
 an unlinked chat gets nothing. Linked admins only ever receive their own events (see notify.py)."""
 import hashlib
+import hmac
 import logging
 import secrets
-import time
 import httpx
 from sqlalchemy import func
 from app.config import settings
@@ -11,7 +11,6 @@ from app.db.models import Admin, Panel, Setting, User
 from app.db.session import SessionLocal
 
 log = logging.getLogger("jinxdata.tgbot")
-CODE_TTL = 600
 _bot_name: str | None = None
 
 
@@ -20,12 +19,10 @@ def _h(code: str) -> str:
 
 
 def make_link_code(db, admin: Admin) -> str:
-    now = time.time()
-    for s in db.query(Setting).filter(Setting.key.like("tglink:%")).all():  # drop expired + this admin's older codes
-        v = s.value if isinstance(s.value, dict) else {}
-        if v.get("exp", 0) < now or v.get("admin_id") == admin.id: db.delete(s)
+    for s in db.query(Setting).filter(Setting.key.like("tglink:%")).all():  # a new code replaces this admin's older one
+        if isinstance(s.value, dict) and s.value.get("admin_id") == admin.id: db.delete(s)
     code = secrets.token_urlsafe(12)
-    db.add(Setting(key=f"tglink:{_h(code)}", value={"admin_id": admin.id, "exp": now + CODE_TTL}))
+    db.add(Setting(key=f"tglink:{_h(code)}", value={"admin_id": admin.id}))
     db.commit()
     return code
 
@@ -44,9 +41,8 @@ def bot_username() -> str | None:
 def _link(db, chat_id: str, code: str) -> str:
     s = db.get(Setting, f"tglink:{_h(code.strip())}")
     v = s.value if s and isinstance(s.value, dict) else None
-    if not v or v.get("exp", 0) < time.time():
-        if s: db.delete(s); db.commit()
-        return "❌ کد نامعتبر یا منقضی است. از پنل (اکانت من ← تلگرام) کد جدید بگیرید."
+    if not v:
+        return "❌ کد نامعتبر است یا قبلاً استفاده شده. از پنل (اکانت من ← ربات تلگرام) لینک جدید بگیرید."
     admin = db.get(Admin, int(v["admin_id"]))
     db.delete(s)
     if not admin or admin.disabled:
@@ -87,29 +83,30 @@ def handle_text(chat_id: str, text: str) -> str | None:
     return None
 
 
-def _offset(db) -> int:
-    s = db.get(Setting, "tg:offset")
-    return int(s.value.get("v", 0)) if s and isinstance(s.value, dict) else 0
+def webhook_secret() -> str:
+    return hmac.new(settings.jwt_secret.encode(), b"telegram-webhook", hashlib.sha256).hexdigest()[:48]
 
 
-async def poll_updates() -> int:
-    if not settings.telegram_bot_token: return 0
-    api = f"https://api.telegram.org/bot{settings.telegram_bot_token}"
-    with SessionLocal() as db: off = _offset(db)
+def process_update(up: dict) -> dict | None:
+    """Telegram update -> webhook-response dict (Telegram sends it as the reply), or None."""
+    m = (up or {}).get("message") or {}; chat = m.get("chat") or {}
+    if chat.get("type") != "private" or not isinstance(m.get("text"), str): return None
+    try: reply = handle_text(str(chat["id"]), m["text"][:200])
+    except Exception as exc:
+        log.warning("bot command failed: %s", type(exc).__name__); return None
+    return {"method": "sendMessage", "chat_id": chat["id"], "text": reply} if reply else None
+
+
+async def set_webhook() -> bool:
+    """Register this panel's webhook with Telegram (called on startup). Needs a public HTTPS PUBLIC_BASE_URL."""
+    if not settings.telegram_bot_token: return False
+    url = settings.public_base_url.rstrip("/") + "/api/telegram/webhook"
     try:
         async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.post(f"{api}/getUpdates", json={"offset": off, "timeout": 0, "limit": 20, "allowed_updates": ["message"]})
-            ups = r.json().get("result") or []
-            for up in ups:
-                off = max(off, int(up.get("update_id", 0)) + 1)
-                m = up.get("message") or {}; chat = m.get("chat") or {}
-                if chat.get("type") != "private" or "text" not in m: continue
-                try: reply = handle_text(str(chat["id"]), m["text"][:200])
-                except Exception as exc:
-                    log.warning("bot command failed: %s", type(exc).__name__); reply = None
-                if reply: await c.post(f"{api}/sendMessage", json={"chat_id": chat["id"], "text": reply})
+            r = await c.post(f"https://api.telegram.org/bot{settings.telegram_bot_token}/setWebhook",
+                             json={"url": url, "secret_token": webhook_secret(), "allowed_updates": ["message"], "max_connections": 5})
+        ok = bool(r.json().get("ok"))
+        if not ok: log.warning("setWebhook rejected (needs public HTTPS on port 443/80/88/8443): %s", str(r.json().get("description"))[:120])
+        return ok
     except Exception as exc:
-        log.warning("telegram poll failed: %s", type(exc).__name__); return 0
-    with SessionLocal() as db:
-        db.merge(Setting(key="tg:offset", value={"v": off})); db.commit()
-    return len(ups)
+        log.warning("setWebhook failed: %s", type(exc).__name__); return False
