@@ -290,7 +290,7 @@ def sub_templates(admin: Admin = Depends(current_admin), db: Session = Depends(g
     return {"current": resolve_template(db, admin.id), "items": [{"id": k, "label": v["label"], "allowed": k in ok} for k, v in THEMES.items()]}
 
 
-@router.put("/sub-template", response_model=OkOut, summary="انتخاب قالب صفحه اشتراک کاربران من", responses=errs(401, 403, 422))
+@router.put("/sub-template", response_model=OkOut, summary="انتخاب قالب صفحه اشتراک کاربران من", responses=errs(401, 403))
 def set_sub_template(body: TemplateIn, admin: Admin = Depends(current_admin), db: Session = Depends(get_db)):
     from app.subscription.themes import THEMES, allowed_templates
     if body.id not in THEMES: raise _err(422, "قالب نامعتبر است", "INVALID_TEMPLATE")

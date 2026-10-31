@@ -4,7 +4,6 @@ import hashlib
 import logging
 import secrets
 import time
-from datetime import datetime, timezone
 import httpx
 from sqlalchemy import func
 from app.config import settings
