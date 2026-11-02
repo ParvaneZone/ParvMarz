@@ -10,7 +10,7 @@ from app.config import settings
 from sqlalchemy import func
 from app.core.subtokens import verify_subscription_token
 from app.core.crypto import decrypt_secret
-from app.db.models import SyncTask, User, UserPanelAccount, Panel, Service, Setting, InboundAlias, PanelInbound, Admin
+from app.db.models import SyncTask, User, UserPanelAccount, Panel, Service, Setting, InboundAlias, PanelInbound, Admin, SubAccess
 from app.db.session import SessionLocal
 from app.drivers.factory import build_driver
 from app.core.errors import short_error
@@ -19,7 +19,7 @@ log=logging.getLogger('jinxdata.sub')
 _fetch_err:dict[int,str]={}
 from app.subscription.merge import deduplicate_links, apply_aliases, apply_config_names, link_member_keys, to_clash, to_singbox, to_v2ray_json
 from app.subscription.pick import pick_from_groups
-from app.subscription.geo import client_ip, spawn_record
+from app.subscription.geo import client_ip, spawn_record, last_online
 from app.subscription.page import render_subscription_page
 router=APIRouter(tags=['subscription'])
 _cache:dict[str,tuple[float,list[str]]]={}
@@ -89,7 +89,8 @@ def _load_user(token:str):
   else: user=db.query(User).filter(func.lower(User.username)==claims['u'].lower()).first()  # legacy token
   if not user or user.sub_token_version!=claims['v']: raise HTTPException(404,'Subscription not found')
   svc=db.get(Service,user.service_id)
-  return {'id':user.id,'username':user.username,'version':user.sub_token_version,'status':user.status,'used':user.used_traffic,'limit':user.data_limit,'expire':_ts(user.expire) or 0,'created':_ts(user.created_at) or 0,'service_id':user.service_id,'groups':(lambda ss:[str(x) for x in (ss.value.get('ids') or [])] if ss and isinstance(ss.value,dict) else [])(db.get(Setting,f'svc_groups:{user.service_id}')),'service_name':(svc.display_name or svc.name) if svc else '','inb_mode':svc.inbound_mode if svc else 'all','inb_interval':svc.inbound_interval if svc else 60,'inb_count':svc.inbound_count if svc else 1,'admin_id':user.admin_id,'online_at':_ts(user.online_at),'reset':user.data_limit_reset_strategy,'on_hold_days':(user.on_hold_expire_duration or 0)//86400 or None}
+  last_fetch=db.query(func.max(SubAccess.last_seen)).filter(SubAccess.user_id==user.id).scalar()
+  return {'id':user.id,'username':user.username,'version':user.sub_token_version,'status':user.status,'used':user.used_traffic,'limit':user.data_limit,'expire':_ts(user.expire) or 0,'created':_ts(user.created_at) or 0,'service_id':user.service_id,'groups':(lambda ss:[str(x) for x in (ss.value.get('ids') or [])] if ss and isinstance(ss.value,dict) else [])(db.get(Setting,f'svc_groups:{user.service_id}')),'service_name':(svc.display_name or svc.name) if svc else '','inb_mode':svc.inbound_mode if svc else 'all','inb_interval':svc.inbound_interval if svc else 60,'inb_count':svc.inbound_count if svc else 1,'admin_id':user.admin_id,'online_at':_ts(last_online(user.online_at,last_fetch)),'reset':user.data_limit_reset_strategy,'on_hold_days':(user.on_hold_expire_duration or 0)//86400 or None}
 def _tpl(admin_id)->str:
  from app.subscription.themes import resolve_template
  with SessionLocal() as db: return resolve_template(db,admin_id)

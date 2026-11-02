@@ -10,6 +10,12 @@ log = logging.getLogger("jinxdata.geo")
 _mem: dict[str, dict] = {}
 
 
+def last_online(online_at, last_fetch):
+    """Most recent of the usage-based online_at and the last subscription fetch (naive datetimes are treated as UTC)."""
+    vals = [v.replace(tzinfo=timezone.utc) if v.tzinfo is None else v for v in (online_at, last_fetch) if v]
+    return max(vals) if vals else None
+
+
 def client_ip(request) -> str:
     h = request.headers
     ip = (h.get("cf-connecting-ip") or h.get("x-real-ip") or (h.get("x-forwarded-for") or "").split(",")[0] or (request.client.host if request.client else "")).strip()
