@@ -1,4 +1,5 @@
 from app.subscription.page import render_subscription_page, fmt_bytes
+from app.subscription.themes import THEMES
 
 
 def _render(**kw):
@@ -19,3 +20,9 @@ def test_page_states_and_unlimited():
     assert "منقضی شده" in _render(state="expired", links=[])
     assert "∞" in _render(limit=None)
     assert fmt_bytes(None) == "نامحدود"
+
+
+def test_all_templates_render_with_usage_cols():
+    for tid in THEMES:
+        html = _render(template=tid)
+        assert f'class="t-{tid}"' in html and 'class="vcol"' in html
