@@ -18,9 +18,9 @@ function Row({ k, children }: { k: string; children: React.ReactNode }) {
     <Text className="muted" fontSize="sm" flexShrink={0}>{k}</Text><Text fontWeight={600} fontSize="sm" textAlign="end" wordBreak="break-word">{children}</Text></HStack>;
 }
 
-type Props = { c: Ctx; loading: boolean; items: UserRow[]; isSudo: boolean; can: (k: string) => boolean; sel: number[]; setSel: (v: number[]) => void; stLabel: (s: string) => string; subUrl: (u: { subscription_url: string | null }) => string; onEdit: (u: any) => void; onQr: (url: string) => void; action: (path: string, method?: string) => Promise<void>; meName?: string };
+type Props = { c: Ctx; loading: boolean; items: UserRow[]; isSudo: boolean; can: (k: string) => boolean; sel: number[]; setSel: (v: number[]) => void; stLabel: (s: string) => string; subUrl: (u: { subscription_url: string | null }) => string; onEdit: (u: any) => void; onQr: (url: string) => void; action: (path: string, method?: string) => Promise<void>; meName?: string; total: number; page: number; pageSize: number; onPage: (p: number) => void };
 
-export function UsersList({ c, loading, items, isSudo, can, sel, setSel, stLabel, subUrl, onEdit, onQr, action, meName }: Props) {
+export function UsersList({ c, loading, items, isSudo, can, sel, setSel, stLabel, subUrl, onEdit, onQr, action, meName, total, page, pageSize, onPage }: Props) {
   const { t, toast, api } = c;
   const [openId, setOpenId] = React.useState<number | null>(null);
   const admins = useQuery({ queryKey: ["admins"], queryFn: () => api("/api/admins"), enabled: isSudo });
@@ -37,6 +37,7 @@ export function UsersList({ c, loading, items, isSudo, can, sel, setSel, stLabel
   const daysLeft = (x: UserRow) => { const d = parse(x.expire); return d ? Math.ceil((+d - Date.now()) / 86400000) : null; };
   const enc = (x: UserRow) => `/api/user/${encodeURIComponent(x.username)}`;
   const run = (fn: () => void) => { setOpenId(null); fn(); };
+  const from = total ? page * pageSize + 1 : 0; const to = Math.min(total, (page + 1) * pageSize);
 
   if (loading) return <Text>{t("در حال بارگذاری…", "Loading…")}</Text>;
   if (!items.length) return <Text className="muted">{t("کاربری پیدا نشد.", "No users found.")}</Text>;
@@ -49,6 +50,13 @@ export function UsersList({ c, loading, items, isSudo, can, sel, setSel, stLabel
         <Td><Badge colorScheme={tone(x.status)}>{stLabel(x.status)}</Badge></Td>
         <Td minW="150px"><Text fontSize="sm" className="ltr">{usage(x)}</Text><Progress mt={1} value={pct(x)} size="xs" borderRadius="full" colorScheme={bar(x)} /></Td>
         <Td display={{ base: "none", md: "table-cell" }} className="ltr">{x.expire ? parse(x.expire)!.toLocaleDateString() : "—"}</Td></Tr>)}</Tbody></Table></Box>
+    <HStack justify="space-between" mt={3} flexWrap="wrap" spacing={2}>
+      <Text className="muted ltr" fontSize="sm">{t(`${from}–${to} از ${total}`, `${from}–${to} of ${total}`)}</Text>
+      <HStack spacing={2}>
+        <Button h="44px" variant="outline" isDisabled={page <= 0} onClick={() => onPage(page - 1)}>{t("قبلی", "Previous")}</Button>
+        <Button h="44px" variant="outline" isDisabled={(page + 1) * pageSize >= total} onClick={() => onPage(page + 1)}>{t("بعدی", "Next")}</Button>
+      </HStack>
+    </HStack>
     <Modal isOpen={!!u} onClose={() => setOpenId(null)} isCentered scrollBehavior="inside"><ModalOverlay />
       {u && <ModalContent mx={3}><ModalHeader pb={1}><HStack spacing={3} flexWrap="wrap"><Heading size="md" className="ltr" wordBreak="break-all">{u.username}</Heading><Badge colorScheme={tone(u.status)}>{stLabel(u.status)}</Badge>{isOnline(u.id) && <Badge colorScheme="green">{t("آنلاین", "online")}</Badge>}</HStack></ModalHeader><ModalCloseButton />
         <ModalBody pb={5}>
