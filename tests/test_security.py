@@ -32,3 +32,11 @@ def test_compact_subscription_token():
     assert verify_subscription_token("x" * 600) is None
     # a token for another version/user must not verify as this one
     assert verify_subscription_token(issue_subscription_token("alice", 123, 5, user_id=42)) != verify_subscription_token(token)
+
+
+def test_subscription_token_is_uuid_shaped():
+    import re
+    token = issue_subscription_token("alice", 123, 4, user_id=42)
+    assert re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", token)
+    flipped = token[:-1] + ("0" if token[-1] != "0" else "1")
+    assert verify_subscription_token(flipped) is None
