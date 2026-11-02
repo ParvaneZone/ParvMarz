@@ -213,6 +213,7 @@ export function AdminsTab(c: Ctx) {
   const sv = useQuery({ queryKey: ["services"], queryFn: () => api("/api/services") });
   const empty = { username: "", password: "", role: "admin", max_users: "", max_total_gb: "", max_user_gb: "", max_user_days: "", expire: "", telegram_id: "", services: [] as number[], perms: {} as Record<string, boolean> };
   const [f, setF] = React.useState<any>(null); const [editId, setEditId] = React.useState<number | null>(null);
+  const [det, setDet] = React.useState<number | null>(null);
   const set = (k: string, v: any) => setF({ ...f, [k]: v });
   const [pw, setPw] = React.useState({ current_password: "", new_password: "" });
   const allKeys: string[] = (cat.data || []).flatMap((g: any) => g.items.map((i: any) => i.key));
@@ -237,7 +238,12 @@ export function AdminsTab(c: Ctx) {
         if (r?.warnings?.length) c.toast({ title: t("ادمین ساخته شد، ولی:", "Admin created, but:"), description: r.warnings.join("\n"), status: "warning", duration: 12000, isClosable: true });
       });
   const edit = (a: any) => { setEditId(a.id); setF({ ...empty, username: a.username, role: a.role, max_users: a.max_users ?? "", max_total_gb: toGB(a.max_total_traffic), max_user_gb: toGB(a.max_user_traffic), max_user_days: a.max_user_days ?? "", expire: a.expire ? a.expire.slice(0, 10) : "", telegram_id: a.telegram_id || "", services: a.allowed_services || [], perms: Object.keys(a.permissions || {}).length ? a.permissions : Object.fromEntries(allKeys.map(k => [k, true])) }); };
+  const recharge = (a: any) => { const d = prompt(t("روز شارژ", "Days to add"), "30"); if (d === null) return; const g = prompt(t("حجم شارژ (GB)", "GB to add"), "0"); if (g === null) return; const r = confirm(t("مصرف کاربران ریست شود؟", "Reset users' usage?")); void run(`/api/admins/${a.id}/recharge`, J("POST", { add_days: Number(d) || 0, add_traffic: Math.round((Number(g) || 0) * GB), reset_usage: r })); };
   const isAdmin = f?.role === "admin";
+  const da = (q.data || []).find((a: any) => a.id === det);
+  const cap = (v: number | null | undefined) => (v == null ? "∞" : (v / GB).toFixed(0) + " GB");
+  const D = (l: string, v: React.ReactNode) => <HStack key={l} justify="space-between" align="start"><Text className="muted">{l}</Text><Text className="ltr" textAlign="end">{v}</Text></HStack>;
+  const stateLabel = (s: string) => ({ active: t("فعال", "on"), disabled: t("غیرفعال", "off"), expired: t("زمان تمام", "expired"), traffic_exhausted: t("حجم تمام", "no traffic") } as any)[s] ?? s;
   return <Box className="panel">
     <HStack justify="space-between" mb={4}><Heading size="md">{t("ادمین‌ها", "Admins")}</Heading><Button size="md" colorScheme="blue" onClick={() => { setEditId(null); setF(empty); }}>{t("ادمین جدید", "New admin")}</Button></HStack>
     {f && <Box className="create-form" mb={4}>
@@ -263,17 +269,35 @@ export function AdminsTab(c: Ctx) {
           <F label={t("سقف روز هر کاربر", "Max user days")}><Input type="number" value={f.max_user_days} onChange={e => set("max_user_days", e.target.value)} /><Chips opts={[["30", "30"], ["60", "60"], ["90", "90"], ["365", "365"], ["∞", ""]]} onPick={v => set("max_user_days", v)} /></F>
         </SimpleGrid></>}
       <HStack mt={4}><Button colorScheme="blue" onClick={save}>{editId ? t("ذخیره", "Save") : t("ایجاد", "Create")}</Button><Button onClick={() => { setF(null); setEditId(null); }}>{t("انصراف", "Cancel")}</Button></HStack></Box>}
-    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>ID</Th><Th>{t("نام کاربری", "Username")}</Th><Th>{t("نقش", "Role")}</Th><Th>{t("سرویس‌ها", "Services")}</Th><Th>{t("وضعیت", "Status")}</Th><Th>{t("عملیات", "Actions")}</Th></Tr></Thead>
-      <Tbody>{(q.data || []).map((a: any) => <Tr key={a.id}><Td>{a.id}</Td><Td>{a.username}{a.telegram_id && <Text fontSize="xs" className="ltr muted">TG {a.telegram_id}</Text>}</Td><Td>{a.role === "sudo" ? t("مدیر اصلی", "Sudo") : t("ادمین", "Admin")}</Td><Td>{a.role === "sudo" ? t("همه", "All") : (a.allowed_services || []).map((id: number) => (sv.data || []).find((s: any) => s.id === id)?.display_name ?? id).join("، ") || "—"}</Td><Td><Badge colorScheme={a.state === "active" ? "green" : a.state === "disabled" ? "red" : "orange"}>{({ active: t("فعال", "on"), disabled: t("غیرفعال", "off"), expired: t("زمان تمام", "expired"), traffic_exhausted: t("حجم تمام", "no traffic") } as any)[a.state] ?? a.state}</Badge>{a.role !== "sudo" && <Text fontSize="xs" className="ltr">{(a.used_traffic / GB).toFixed(1)}/{a.max_total_traffic == null ? "∞" : (a.max_total_traffic / GB).toFixed(0)} GB{a.expire ? " · " + a.expire.slice(0, 10) : ""}</Text>}</Td>
-        <Td><HStack className="act-grp" flexWrap="wrap" spacing={0}>
-          {a.role !== "sudo" && <Button size="sm" colorScheme="blue" onClick={() => edit(a)}>{t("ویرایش دسترسی", "Edit access")}</Button>}
-          {a.role !== "sudo" && <Button size="sm" colorScheme="green" onClick={() => { const d = prompt(t("روز شارژ", "Days to add"), "30"); if (d === null) return; const g = prompt(t("حجم شارژ (GB)", "GB to add"), "0"); if (g === null) return; const r = confirm(t("مصرف کاربران ریست شود؟", "Reset users' usage?")); void run(`/api/admins/${a.id}/recharge`, J("POST", { add_days: Number(d) || 0, add_traffic: Math.round((Number(g) || 0) * GB), reset_usage: r })); }}>{t("شارژ", "Recharge")}</Button>}
-          <Button size="sm" onClick={() => run(`/api/admins/${a.id}`, J("PATCH", { disabled: !a.disabled }))}>{a.disabled ? t("فعال‌سازی", "Enable") : t("غیرفعال", "Disable")}</Button>
-          <Button size="sm" onClick={() => run(`/api/admins/${a.id}/users-status`, J("POST", { status: "disabled" }))}>{t("غیرفعال‌کردن کاربران", "Disable users")}</Button>
-          <Button size="sm" onClick={() => run(`/api/admins/${a.id}/users-status`, J("POST", { status: "active" }))}>{t("فعال‌کردن کاربران", "Enable users")}</Button>
-          {a.totp_enabled && <Button size="sm" onClick={() => confirm(t("2FA این ادمین غیرفعال شود؟", "Disable this admin's 2FA?")) && run(`/api/admins/${a.id}/reset-2fa`, J("POST"))}>{t("ریست 2FA", "Reset 2FA")}</Button>}
-          <Button size="sm" onClick={() => confirm(t("مصرف کاربران صفر شود؟", "Reset usage?")) && run(`/api/admins/${a.id}/reset-usage`, J("POST"))}>{t("ریست مصرف", "Reset usage")}</Button>
-        </HStack></Td></Tr>)}</Tbody></Table></Box>
+    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("نام کاربری", "Username")}</Th><Th>{t("نقش", "Role")}</Th><Th>{t("وضعیت", "Status")}</Th><Th>{t("مصرف/سهمیه", "Usage/Quota")}</Th></Tr></Thead>
+      <Tbody>{(q.data || []).map((a: any) => <Tr key={a.id} cursor="pointer" _hover={{ opacity: 0.85 }} onClick={() => setDet(a.id)}><Td>{a.username}</Td><Td>{a.role === "sudo" ? t("مدیر اصلی", "Sudo") : t("ادمین", "Admin")}</Td>
+        <Td><Badge colorScheme={a.state === "active" ? "green" : a.state === "disabled" ? "red" : "orange"}>{stateLabel(a.state)}</Badge></Td>
+        <Td className="ltr">{a.role === "sudo" ? "—" : `${(a.used_traffic / GB).toFixed(1)}/${cap(a.max_total_traffic).replace(" GB", "")} GB`}</Td></Tr>)}</Tbody></Table></Box>
+    <Modal isOpen={!!da} onClose={() => setDet(null)} isCentered scrollBehavior="inside"><ModalOverlay /><ModalContent><ModalHeader>{da?.username}</ModalHeader><ModalCloseButton /><ModalBody pb={6}>
+      {da && <>
+        <SimpleGrid columns={1} spacing={2} mb={4} fontSize="sm">
+          {D(t("نقش", "Role"), da.role === "sudo" ? t("مدیر اصلی", "Sudo") : t("ادمین", "Admin"))}
+          {D(t("وضعیت", "Status"), stateLabel(da.state))}
+          {D(t("سرویس‌های مجاز", "Services"), da.role === "sudo" ? t("همه", "All") : (da.allowed_services || []).map((id: number) => (sv.data || []).find((s: any) => s.id === id)?.display_name ?? id).join("، ") || "—")}
+          {da.role !== "sudo" && D(t("مصرف", "Used"), `${(da.used_traffic / GB).toFixed(1)} GB`)}
+          {da.role !== "sudo" && D(t("سقف کل حجم", "Total cap"), cap(da.max_total_traffic))}
+          {da.role !== "sudo" && D(t("سقف حجم هر کاربر", "Per-user cap"), cap(da.max_user_traffic))}
+          {da.role !== "sudo" && D(t("حداکثر کاربر", "Max users"), da.max_users ?? "∞")}
+          {da.role !== "sudo" && D(t("سقف روز هر کاربر", "Max user days"), da.max_user_days ?? "∞")}
+          {D(t("انقضا", "Expiry"), da.expire ? da.expire.slice(0, 10) : "∞")}
+          {D(t("آیدی تلگرام", "Telegram ID"), da.telegram_id || "—")}
+          {D("2FA", da.totp_enabled ? t("فعال", "On") : t("غیرفعال", "Off"))}
+        </SimpleGrid>
+        {da.role !== "sudo" && <Button w="full" mb={3} colorScheme="blue" onClick={() => { edit(da); setDet(null); }}>{t("ویرایش دسترسی", "Edit access")}</Button>}
+        <SimpleGrid columns={2} spacing={2}>
+          {da.role !== "sudo" && <Button variant="outline" onClick={() => recharge(da)}>{t("شارژ", "Recharge")}</Button>}
+          <Button variant="outline" onClick={() => run(`/api/admins/${da.id}`, J("PATCH", { disabled: !da.disabled }))}>{da.disabled ? t("فعال‌سازی", "Enable") : t("غیرفعال", "Disable")}</Button>
+          <Button variant="outline" onClick={() => run(`/api/admins/${da.id}/users-status`, J("POST", { status: "disabled" }))}>{t("غیرفعال‌کردن کاربران", "Disable users")}</Button>
+          <Button variant="outline" onClick={() => run(`/api/admins/${da.id}/users-status`, J("POST", { status: "active" }))}>{t("فعال‌کردن کاربران", "Enable users")}</Button>
+          <Button variant="outline" onClick={() => confirm(t("مصرف کاربران صفر شود؟", "Reset usage?")) && run(`/api/admins/${da.id}/reset-usage`, J("POST"))}>{t("ریست مصرف", "Reset usage")}</Button>
+          {da.totp_enabled && <Button variant="outline" onClick={() => confirm(t("2FA این ادمین غیرفعال شود؟", "Disable this admin's 2FA?")) && run(`/api/admins/${da.id}/reset-2fa`, J("POST"))}>{t("ریست 2FA", "Reset 2FA")}</Button>}
+        </SimpleGrid></>}
+    </ModalBody></ModalContent></Modal>
     <Heading size="sm" mt={6} mb={2}>{t("تغییر رمز من", "Change my password")}</Heading>
     <HStack flexWrap="wrap"><Input maxW="240px" type="password" placeholder={t("رمز فعلی", "Current")} value={pw.current_password} onChange={e => setPw({ ...pw, current_password: e.target.value })} /><PwField w="460px" t={t} value={pw.new_password} onChange={v => setPw({ ...pw, new_password: v })} /><Button onClick={() => run("/api/admin/password", J("POST", pw), () => setPw({ current_password: "", new_password: "" }))}>{t("تغییر", "Change")}</Button></HStack>
   </Box>;
