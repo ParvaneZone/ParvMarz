@@ -35,6 +35,8 @@ function PwField({ value, onChange, t, w }: { value: string; onChange: (v: strin
     <Button size="sm" flexShrink={0} variant="outline" isDisabled={!value} onClick={() => void navigator.clipboard?.writeText(value)}>{t("کپی", "Copy")}</Button></HStack>;
 }
 const num = (v: string) => (v === "" ? null : Number(v));
+/** Minor table columns: hidden on phones (the table still scrolls sideways), shown from tablet width. */
+const hideSm = { base: "none", md: "table-cell" } as const;
 
 /* ---------------- Panels ---------------- */
 export function PanelsTab(c: Ctx) {
@@ -75,8 +77,8 @@ export function PanelsTab(c: Ctx) {
       <HStack><Checkbox isChecked={f.verify_ssl} onChange={e => set("verify_ssl", e.target.checked)}>SSL</Checkbox><Checkbox isChecked={f.enabled} onChange={e => set("enabled", e.target.checked)}>{t("فعال", "Enabled")}</Checkbox></HStack>
     </SimpleGrid><HStack mt={4}><Button colorScheme="blue" onClick={save}>{t("ذخیره", "Save")}</Button><Button onClick={() => setF(null)}>{t("انصراف", "Cancel")}</Button></HStack>
       {editId && <Text mt={2} fontSize="sm" className="muted">{t("برای ویرایش، نام کاربری و رمز پنل باید دوباره وارد شود.", "Re-enter panel credentials when editing.")}</Text>}</Box>}
-    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>ID</Th><Th>{t("نام", "Name")}</Th><Th>{t("نوع", "Type")}</Th><Th>URL</Th><Th>{t("سلامت", "Health")}</Th><Th>{t("عملیات", "Actions")}</Th></Tr></Thead>
-      <Tbody>{(q.data || []).map((p: any) => <Tr key={p.id}><Td>{p.id}</Td><Td>{p.name}</Td><Td>{p.type}</Td><Td className="ltr">{p.base_url}</Td>
+    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th display={hideSm}>ID</Th><Th>{t("نام", "Name")}</Th><Th display={hideSm}>{t("نوع", "Type")}</Th><Th display={hideSm}>URL</Th><Th>{t("سلامت", "Health")}</Th><Th>{t("عملیات", "Actions")}</Th></Tr></Thead>
+      <Tbody>{(q.data || []).map((p: any) => <Tr key={p.id}><Td display={hideSm}>{p.id}</Td><Td>{p.name}</Td><Td display={hideSm}>{p.type}</Td><Td className="ltr" display={hideSm}>{p.base_url}</Td>
         <Td><Badge colorScheme={p.status === "healthy" ? "green" : "red"}>{p.status}</Badge>{p.last_error && <Text fontSize="xs">{p.last_error}</Text>}</Td>
         <Td><HStack className="act-grp" flexWrap="wrap" spacing={0}>
           <Button size="sm" onClick={() => run(`/api/panels/${p.id}/test`, J("POST"))}>{t("تست", "Test")}</Button>
@@ -91,7 +93,7 @@ export function PanelsTab(c: Ctx) {
       {inb?.error && <Text color="red.400" fontSize="sm" mb={2}>{inb.error}</Text>}
       {inb?.note && <Text color="orange.400" fontSize="sm" mb={2} className="ltr">{inb.note}</Text>}
       {inb && !inb.busy && !inb.error && inb.rows.length === 0 && <Text fontSize="sm" className="muted">{t("اینباندی پیدا نشد.", "No inbounds found.")}</Text>}
-      <Table size="sm"><Thead><Tr><Th>#</Th><Th>{t("هاست", "Host")}</Th><Th>tag</Th><Th>protocol</Th><Th>network</Th><Th>security</Th></Tr></Thead><Tbody>{(inb?.rows || []).map((x: any, n: number) => <Tr key={x.id}><Td>{n + 1}</Td><Td>{(x.hosts || []).map((h: any) => h.remark).join("، ") || "—"}</Td><Td className="ltr">{x.tag}</Td><Td>{x.protocol || "—"}</Td><Td>{x.network || "—"}</Td><Td>{x.security || "—"}</Td></Tr>)}</Tbody></Table></ModalBody></ModalContent></Modal>
+      <Table size="sm"><Thead><Tr><Th display={hideSm}>#</Th><Th>{t("هاست", "Host")}</Th><Th>tag</Th><Th>protocol</Th><Th display={hideSm}>network</Th><Th display={hideSm}>security</Th></Tr></Thead><Tbody>{(inb?.rows || []).map((x: any, n: number) => <Tr key={x.id}><Td display={hideSm}>{n + 1}</Td><Td>{(x.hosts || []).map((h: any) => h.remark).join("، ") || "—"}</Td><Td className="ltr">{x.tag}</Td><Td>{x.protocol || "—"}</Td><Td display={hideSm}>{x.network || "—"}</Td><Td display={hideSm}>{x.security || "—"}</Td></Tr>)}</Tbody></Table></ModalBody></ModalContent></Modal>
   </Box>;
 }
 
@@ -165,7 +167,7 @@ export function ServicesTab(c: Ctx) {
           <Button size="sm" onClick={() => run(`/api/services/${s.id}/clone`, J("POST"))}>{t("کپی", "Clone")}</Button><Switch isChecked={s.enabled} onChange={e => run(`/api/services/${s.id}`, J("PUT", { name: s.name, display_name: s.display_name, description: s.description, enabled: e.target.checked, sort_order: s.sort_order, sub_remark_template: s.sub_remark_template, inbound_mode: s.inbound_mode, inbound_interval: s.inbound_interval, inbound_count: s.inbound_count }))} />
           <Button size="sm" colorScheme="red" onClick={() => { setMv(""); setDel(s); }}>{t("حذف", "Delete")}</Button></HStack>}</HStack>
       {s.inbound_names?.length > 0 && <Text fontSize="sm" mt={2}>{s.inbound_names.join("، ")}</Text>}
-      <Table size="sm" mt={2}><Tbody>{s.items.map((i: any) => <Tr key={i.id}><Td>{pname(i.panel_id)}</Td><Td>{(i.selected_names || i.selected_items || []).join(", ") || t("همه", "all")}</Td><Td>P{i.priority}</Td><Td><Switch isChecked={i.enabled} onChange={e => run(`/api/services/${s.id}/items/${i.id}`, J("PUT", { enabled: e.target.checked }))} /></Td><Td><Button size="sm" colorScheme="red" variant="outline" aria-label={t("حذف","Remove")} onClick={() => run(`/api/services/${s.id}/items/${i.id}`, J("DELETE"))}><Icon name="x" size={14} /></Button></Td></Tr>)}</Tbody></Table>
+      <Box className="tscroll"><Table size="sm" mt={2}><Tbody>{s.items.map((i: any) => <Tr key={i.id}><Td>{pname(i.panel_id)}</Td><Td>{(i.selected_names || i.selected_items || []).join(", ") || t("همه", "all")}</Td><Td display={hideSm}>P{i.priority}</Td><Td><Switch isChecked={i.enabled} onChange={e => run(`/api/services/${s.id}/items/${i.id}`, J("PUT", { enabled: e.target.checked }))} /></Td><Td><Button size="sm" colorScheme="red" variant="outline" aria-label={t("حذف","Remove")} onClick={() => run(`/api/services/${s.id}/items/${i.id}`, J("DELETE"))}><Icon name="x" size={14} /></Button></Td></Tr>)}</Tbody></Table></Box>
       {s.group_ids?.length > 0 && <Text fontSize="xs" className="muted" mt={1}>{t("دسته‌ها: ", "Groups: ")}{gname(s.group_ids)}</Text>}
       {s.group_ids && <ServiceGroups c={c} service={s} />}
       {addFor === s.id && <ItemAdder c={c} service={s} done={() => setAddFor(null)} />}
@@ -196,8 +198,8 @@ export function TemplatesTab(c: Ctx) {
       <F label={t("ریست حجم", "Reset strategy")}><Select value={f.reset_strategy} onChange={e => set("reset_strategy", e.target.value)}>{[["no_reset", "بدون ریست"], ["day", "روزانه"], ["week", "هفتگی"], ["month", "ماهانه"], ["year", "سالانه"]].map(([x, l]) => <option key={x} value={x}>{t(l, x)}</option>)}</Select></F>
       <Checkbox isChecked={f.add_remaining_traffic} onChange={e => set("add_remaining_traffic", e.target.checked)}>{t("اضافه شدن حجم باقی‌مانده", "Add remaining traffic")}</Checkbox>
     </SimpleGrid><HStack mt={4}><Button colorScheme="blue" onClick={() => run(editId ? `/api/templates/${editId}` : "/api/templates", J(editId ? "PUT" : "POST", body()), () => setF(null))}>{t("ذخیره", "Save")}</Button><Button onClick={() => setF(null)}>{t("انصراف", "Cancel")}</Button></HStack></Box>}
-    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("نام", "Name")}</Th><Th>{t("سرویس", "Service")}</Th><Th>{t("حجم", "Traffic")}</Th><Th>{t("مدت", "Days")}</Th><Th /></Tr></Thead>
-      <Tbody>{(q.data || []).map((x: any) => <Tr key={x.id}><Td>{x.name}</Td><Td>{(sv.data || []).find((s: any) => s.id === x.service_id)?.display_name ?? x.service_id}</Td><Td>{x.data_limit == null ? "∞" : (x.data_limit / GB).toFixed(1) + " GB"}</Td><Td>{x.duration ?? "∞"}</Td>
+    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("نام", "Name")}</Th><Th>{t("سرویس", "Service")}</Th><Th>{t("حجم", "Traffic")}</Th><Th display={hideSm}>{t("مدت", "Days")}</Th><Th /></Tr></Thead>
+      <Tbody>{(q.data || []).map((x: any) => <Tr key={x.id}><Td>{x.name}</Td><Td>{(sv.data || []).find((s: any) => s.id === x.service_id)?.display_name ?? x.service_id}</Td><Td>{x.data_limit == null ? "∞" : (x.data_limit / GB).toFixed(1) + " GB"}</Td><Td display={hideSm}>{x.duration ?? "∞"}</Td>
         <Td><HStack className="act-grp" spacing={0}><Button size="sm" onClick={() => { setEditId(x.id); setF({ name: x.name, service_id: String(x.service_id), data_gb: x.data_limit == null ? "" : String(x.data_limit / GB), duration: x.duration == null ? "" : String(x.duration), username_prefix: x.username_prefix, username_suffix: x.username_suffix, reset_strategy: x.reset_strategy, add_remaining_traffic: x.add_remaining_traffic }); }}>{t("ویرایش", "Edit")}</Button>
           <Button size="sm" colorScheme="red" onClick={() => ask({ title: t("قالب حذف شود؟", "Delete template?"), body: x.name, danger: true, confirmLabel: t("حذف", "Delete") }, () => void run(`/api/templates/${x.id}`, J("DELETE")))}>{t("حذف", "Delete")}</Button></HStack></Td></Tr>)}</Tbody></Table></Box>
   </Box>;
@@ -226,8 +228,8 @@ export function AdminsTab(c: Ctx) {
   const check = (): string => {
     if ((f.telegram_id || "").trim() && !/^-?\d{5,20}$/.test(f.telegram_id.trim())) return t("آیدی عددی تلگرام فقط باید عدد باشد (مثلاً 123456789)", "Telegram ID must be numeric (e.g. 123456789)");
     if (editId) return "";
-    if (!/^[A-Za-z0-9_.-]{3,80}$/.test(f.username)) return t("نام کاربری: حداقل ۳ کاراکتر و فقط حروف انگلیسی/عدد/_ . -", "Username: min 3 chars, letters/digits/_ . - only");
-    if ((f.password || "").length < 12) return t(`رمز: حداقل ۱۲ کاراکتر (الان ${(f.password || "").length})`, `Password: min 12 chars (now ${(f.password || "").length})`);
+    if (!/^[A-Za-z0-9_.-]{3,80}$/.test(f.username)) return t("نام کاربری: حداقل 3 کاراکتر و فقط حروف انگلیسی/عدد/_ . -", "Username: min 3 chars, letters/digits/_ . - only");
+    if ((f.password || "").length < 12) return t(`رمز: حداقل 12 کاراکتر (الان ${(f.password || "").length})`, `Password: min 12 chars (now ${(f.password || "").length})`);
     if (!strongPw(f.password || "")) return t("رمز باید حرف کوچک، بزرگ، عدد و نماد ($#@?!) داشته باشد", "Password needs lower, upper, digit and symbol ($#@?!)");
     for (const [k, l] of [["max_users", t("حداکثر کاربر", "Max users")], ["max_total_gb", t("سقف کل حجم", "Total cap")], ["max_user_gb", t("سقف حجم کاربر", "Per-user cap")], ["max_user_days", t("سقف روز", "Max days")]]) if (f[k] !== "" && !(Number(f[k]) >= 0)) return `${l}: ${t("عدد نامعتبر", "invalid number")}`;
     return "";
@@ -254,7 +256,7 @@ export function AdminsTab(c: Ctx) {
     {f && <Box className="create-form" mb={4}>
       <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
         <F label={t("نام کاربری", "Username")}><Input className="ltr" isDisabled={!!editId} value={f.username} onChange={e => set("username", e.target.value)} /></F>
-        {!editId && <F label={t("رمز عبور (حداقل ۱۲؛ حرف کوچک و بزرگ، عدد و نماد $#@?!)", "Password (min 12: upper, lower, digit, symbol $#@?!)")}><PwField t={t} value={f.password} onChange={v => set("password", v)} /></F>}
+        {!editId && <F label={t("رمز عبور (حداقل 12؛ حرف کوچک و بزرگ، عدد و نماد $#@?!)", "Password (min 12: upper, lower, digit, symbol $#@?!)")}><PwField t={t} value={f.password} onChange={v => set("password", v)} /></F>}
         {!editId && <F label={t("نقش", "Role")}><Select value={f.role} onChange={e => set("role", e.target.value)}><option value="admin">{t("ادمین (دسترسی محدود)", "Admin (limited)")}</option><option value="sudo">{t("مدیر اصلی (همه دسترسی‌ها)", "Sudo (full access)")}</option></Select></F>}
         <F label={t("آیدی عددی تلگرام (اختیاری)", "Telegram numeric ID (optional)")}><Input className="ltr" inputMode="numeric" placeholder="123456789" value={f.telegram_id} onChange={e => set("telegram_id", e.target.value)} /><Text fontSize="xs" className="muted" mt={1}>{t("اعلان‌ها و تغییرات همین ادمین به این آیدی در ربات ارسال می‌شود؛ ادمین باید یک‌بار ربات را Start کرده باشد. آیدی را از ربات‌هایی مثل @userinfobot می‌توان گرفت.", "This admin's alerts and changes are sent to this ID. The admin must press Start on the bot once.")}</Text></F>
       </SimpleGrid>
@@ -274,8 +276,8 @@ export function AdminsTab(c: Ctx) {
           <F label={t("سقف روز هر کاربر", "Max user days")}><Input type="number" value={f.max_user_days} onChange={e => set("max_user_days", e.target.value)} /><Chips opts={[["30", "30"], ["60", "60"], ["90", "90"], ["365", "365"], ["∞", ""]]} onPick={v => set("max_user_days", v)} /></F>
         </SimpleGrid></>}
       <HStack mt={4}><Button colorScheme="blue" onClick={save}>{editId ? t("ذخیره", "Save") : t("ایجاد", "Create")}</Button><Button onClick={() => { setF(null); setEditId(null); }}>{t("انصراف", "Cancel")}</Button></HStack></Box>}
-    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("نام کاربری", "Username")}</Th><Th>{t("نقش", "Role")}</Th><Th>{t("وضعیت", "Status")}</Th><Th>{t("مصرف/سهمیه", "Usage/Quota")}</Th></Tr></Thead>
-      <Tbody>{(q.data || []).map((a: any) => <Tr key={a.id} cursor="pointer" _hover={{ opacity: 0.85 }} onClick={() => setDet(a.id)}><Td>{a.username}</Td><Td>{a.role === "sudo" ? t("مدیر اصلی", "Sudo") : t("ادمین", "Admin")}</Td>
+    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("نام کاربری", "Username")}</Th><Th display={hideSm}>{t("نقش", "Role")}</Th><Th>{t("وضعیت", "Status")}</Th><Th>{t("مصرف/سهمیه", "Usage/Quota")}</Th></Tr></Thead>
+      <Tbody>{(q.data || []).map((a: any) => <Tr key={a.id} cursor="pointer" _hover={{ opacity: 0.85 }} onClick={() => setDet(a.id)}><Td>{a.username}</Td><Td display={hideSm}>{a.role === "sudo" ? t("مدیر اصلی", "Sudo") : t("ادمین", "Admin")}</Td>
         <Td><Badge colorScheme={a.state === "active" ? "green" : a.state === "disabled" ? "red" : "orange"}>{stateLabel(a.state)}</Badge></Td>
         <Td className="ltr">{a.role === "sudo" ? "—" : `${(a.used_traffic / GB).toFixed(1)}/${cap(a.max_total_traffic).replace(" GB", "")} GB`}</Td></Tr>)}</Tbody></Table></Box>
     <Modal isOpen={!!da} onClose={() => setDet(null)} isCentered scrollBehavior="inside"><ModalOverlay /><ModalContent><ModalHeader>{da?.username}</ModalHeader><ModalCloseButton /><ModalBody pb={6}>
@@ -347,8 +349,8 @@ export function SystemTab(c: Ctx) {
       {exp && exp.count > 0 && <Button colorScheme="red" onClick={() => ask({ title: t(`${exp.count} کاربر حذف شود؟`, `Delete ${exp.count} users?`), danger: true, confirmLabel: t("حذف", "Delete") }, () => void run("/api/users/expired?dry_run=false", J("DELETE"), () => setExp(null)))}>{t("حذف منقضی‌ها", "Delete expired")} ({exp.count})</Button>}</HStack>
     {exp && <Text mt={2} fontSize="sm" className="ltr">{exp.count}: {exp.users.slice(0, 30).join(", ")}</Text>}
     <Heading size="md" mt={6} mb={3}>{t("لاگ عملیات", "Audit log")}</Heading>
-    <Box className="tscroll" overflowX="auto" maxH="360px" overflowY="auto"><Table size="sm"><Thead><Tr><Th>#</Th><Th>Admin</Th><Th>Action</Th><Th>Object</Th><Th>{t("زمان", "Time")}</Th></Tr></Thead>
-      <Tbody>{(au.data?.items || []).map((x: any) => <Tr key={x.id}><Td>{x.id}</Td><Td>{x.actor_admin_id}</Td><Td>{x.action}</Td><Td>{x.object_type}:{x.object_id}</Td><Td className="ltr">{new Date(x.created_at).toLocaleString()}</Td></Tr>)}</Tbody></Table></Box>
+    <Box className="tscroll" overflowX="auto" maxH="360px" overflowY="auto"><Table size="sm"><Thead><Tr><Th display={hideSm}>#</Th><Th display={hideSm}>Admin</Th><Th>Action</Th><Th>Object</Th><Th>{t("زمان", "Time")}</Th></Tr></Thead>
+      <Tbody>{(au.data?.items || []).map((x: any) => <Tr key={x.id}><Td display={hideSm}>{x.id}</Td><Td display={hideSm}>{x.actor_admin_id}</Td><Td>{x.action}</Td><Td>{x.object_type}:{x.object_id}</Td><Td className="ltr">{new Date(x.created_at).toLocaleString("en-US")}</Td></Tr>)}</Tbody></Table></Box>
   </Box>;
 }
 
@@ -397,8 +399,8 @@ function ConfigNames({ c }: { c: Ctx }) {
     <Text fontSize="sm" className="muted" mb={3}>{t("نام جدید را بنویسید و ذخیره کنید؛ خالی = نام اصلی. روی همه‌ی اشتراک‌ها اعمال می‌شود.", "Type a new name and save; empty = original. Applies to every subscription.")}</Text>
     {q.isLoading && <Text className="muted">{t("در حال دریافت از پنل‌ها…", "Fetching from panels…")}</Text>}
     {(q.data?.notes || []).map((n: string, i: number) => <Text key={i} color="orange.400" fontSize="sm" className="ltr">{n}</Text>)}
-    <Box className="tscroll"><Table size="sm"><Thead><Tr><Th>{t("پنل", "Panel")}</Th><Th>{t("نام اصلی", "Original")}</Th><Th>{t("آدرس", "Address")}</Th><Th>{t("نام جدید", "New name")}</Th><Th /></Tr></Thead>
-      <Tbody>{(q.data?.items || []).map((x: any) => <Tr key={key(x)}><Td>{x.panel_name}</Td><Td fontWeight={700}>{x.name}</Td><Td className="ltr muted">{x.server}:{x.port} · {[x.type, x.network].filter(Boolean).join("/")}</Td>
+    <Box className="tscroll"><Table size="sm"><Thead><Tr><Th>{t("پنل", "Panel")}</Th><Th>{t("نام اصلی", "Original")}</Th><Th display={hideSm}>{t("آدرس", "Address")}</Th><Th>{t("نام جدید", "New name")}</Th><Th /></Tr></Thead>
+      <Tbody>{(q.data?.items || []).map((x: any) => <Tr key={key(x)}><Td>{x.panel_name}</Td><Td fontWeight={700}>{x.name}</Td><Td className="ltr muted" display={hideSm}>{x.server}:{x.port} · {[x.type, x.network].filter(Boolean).join("/")}</Td>
         <Td><Input size="sm" value={v[key(x)] ?? x.display_name} onChange={e => setV({ ...v, [key(x)]: e.target.value })} /></Td>
         <Td><Button size="sm" colorScheme="blue" onClick={() => run("/api/inbounds/config", J("PUT", { panel_id: x.panel_id, name: x.name, display_name: v[key(x)] ?? x.display_name }))}>{t("ذخیره", "Save")}</Button></Td></Tr>)}</Tbody></Table></Box>
   </Box>;
@@ -441,8 +443,8 @@ export function InboundsTab(c: Ctx) {
     <ConfigNames c={c} />
     <GroupsBox c={c} />
     <Heading size="sm" mt={8} mb={3}>{t("اینباندها", "Inbounds")}</Heading>
-    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("پنل", "Panel")}</Th><Th>{t("هاست", "Host")}</Th><Th>{t("اینباند", "Inbound")}</Th><Th>{t("نوع", "Type")}</Th><Th>{t("نام نمایشی", "Display name")}</Th><Th /></Tr></Thead>
-      <Tbody>{(q.data || []).map((x: any) => <Tr key={key(x)}><Td>{x.panel_name}</Td><Td>{(x.hosts || []).length ? (x.hosts as any[]).map((h, i) => <Box key={i}><Text fontWeight={700}>{h.remark}</Text>{h.address && <Text className="muted ltr" fontSize="xs">{h.address}</Text>}</Box>) : <Text className="muted">—</Text>}</Td><Td className="ltr muted">{x.tag}</Td><Td className="ltr">{[x.protocol, x.network, x.security].filter(Boolean).join(" / ")}</Td>
+    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("پنل", "Panel")}</Th><Th>{t("هاست", "Host")}</Th><Th>{t("اینباند", "Inbound")}</Th><Th display={hideSm}>{t("نوع", "Type")}</Th><Th>{t("نام نمایشی", "Display name")}</Th><Th /></Tr></Thead>
+      <Tbody>{(q.data || []).map((x: any) => <Tr key={key(x)}><Td>{x.panel_name}</Td><Td>{(x.hosts || []).length ? (x.hosts as any[]).map((h, i) => <Box key={i}><Text fontWeight={700}>{h.remark}</Text>{h.address && <Text className="muted ltr" fontSize="xs">{h.address}</Text>}</Box>) : <Text className="muted">—</Text>}</Td><Td className="ltr muted">{x.tag}</Td><Td className="ltr" display={hideSm}>{[x.protocol, x.network, x.security].filter(Boolean).join(" / ")}</Td>
         <Td><Input size="sm" placeholder={(x.hosts || [])[0]?.remark || x.tag} value={v[key(x)] ?? x.display_name} onChange={e => setV({ ...v, [key(x)]: e.target.value })} /></Td>
         <Td><Button size="sm" colorScheme="blue" onClick={() => run("/api/inbounds", J("PUT", { panel_id: x.panel_id, tag: x.tag, display_name: v[key(x)] ?? x.display_name }))}>{t("ذخیره", "Save")}</Button></Td></Tr>)}</Tbody></Table></Box>
   </Box>;
@@ -479,7 +481,7 @@ function LiveSystem({ api, t, initial }: { api: Ctx["api"]; t: Ctx["t"]; initial
     setH(o => ({ cpu: push(o.cpu, d.cpu_percent), rx: push(o.rx, d.network?.rx_speed), tx: push(o.tx, d.network?.tx_speed) })); }, [q.dataUpdatedAt]);
   if (!sys) return null;
   const net = sys.network; const mem = sys.memory; const sw = sys.swap; const dk = sys.disk;
-  const stamp = q.dataUpdatedAt ? new Date(q.dataUpdatedAt).toLocaleTimeString() : "";
+  const stamp = q.dataUpdatedAt ? new Date(q.dataUpdatedAt).toLocaleTimeString("en-US") : "";
   return <>
     <HStack mt={6} mb={3} justify="space-between"><Heading size="sm">{t("وضعیت سیستم (زنده)", "System (live)")}</Heading>
       <HStack spacing={2} className="muted" fontSize="xs"><span className={`live-dot${q.isError ? " off" : ""}`} /><Text className="ltr">{q.isError ? t("قطع", "offline") : stamp}</Text></HStack></HStack>
@@ -513,7 +515,7 @@ export function DashboardTab({ api, t }: Ctx) {
       {card(t("کاربران منقضی", "Expired"), d.expired_users, undefined, "clock")}
       {card(t("حجم تمام‌شده", "Limited"), d.limited_users, undefined, "alert")}
       {card(t("در انتظار", "On hold"), d.on_hold_users, undefined, "refresh")}
-      {card(t("انقضا تا ۳ روز", "Expiring in 3d"), d.expiring_soon, undefined, "bolt")}
+      {card(t("انقضا تا 3 روز", "Expiring in 3d"), d.expiring_soon, undefined, "bolt")}
     </SimpleGrid>
     {d.system && <>
       <LiveSystem api={api} t={t} initial={d.system} />
