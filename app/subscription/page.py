@@ -3,10 +3,13 @@
 Pure functions, no web-framework imports: easy to test. Everything that comes from outside
 (usernames, remarks from panels, URLs) is HTML-escaped. Only inline CSS/JS, no external assets, so
 it works on blocked/filtered networks.
+
+Each template has its own *layout* (different markup and section order); colours/styling live in themes.py.
 """
 import base64
 import html
 import math
+from types import SimpleNamespace
 from urllib.parse import quote
 
 STATUS = {
@@ -19,6 +22,11 @@ STATUS = {
 RESET = {"no_reset": "بدون ریست", "day": "روزانه", "week": "هفتگی", "month": "ماهانه", "year": "سالانه"}
 PROTO = {"vless": "VLESS", "vmess": "VMess", "trojan": "Trojan", "ss": "Shadowsocks", "hysteria2": "Hysteria2"}
 _FA = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+NO_CFG = '<p class="muted">در حال حاضر کانفیگی برای نمایش وجود ندارد.</p>'
+STEPS = (
+    '<ol class="steps"><li>یکی از برنامه‌ها را نصب کنید: <b>v2rayNG</b> (اندروید)، <b>Streisand</b> یا <b>Shadowrocket</b> (آیفون)، <b>Hiddify</b> (همه سیستم‌ها).</li>'
+    '<li>روی دکمه‌ی همان برنامه در بالا بزنید، یا لینک اشتراک را کپی و در برنامه از بخش «افزودن اشتراک» وارد کنید.</li>'
+    '<li>اشتراک را بروزرسانی کنید و یک کانفیگ را انتخاب و وصل شوید.</li></ol>')
 
 
 def fa(value) -> str:
@@ -57,6 +65,20 @@ def import_links(sub_url: str, name: str) -> list[tuple[str, str, str]]:
     ]
 
 
+# ---------------------------------------------------------------- small shared pieces
+def _proto_text(p: dict) -> str:
+    proto = PROTO.get(p.get("type", ""), str(p.get("type", "")).upper())
+    sec = p.get("security") or ("tls" if p.get("tls") else "none")
+    parts = [proto, p.get("network") or "tcp"]
+    if sec and sec != "none":
+        parts.append(str(sec).upper())
+    return " · ".join(str(x) for x in parts)
+
+
+def _addr(p: dict) -> str:
+    return e(p.get("server", "")) + ":" + e(p.get("port", ""))
+
+
 def _link_card(p: dict) -> str:
     proto = PROTO.get(p.get("type", ""), str(p.get("type", "")).upper())
     sec = p.get("security") or ("tls" if p.get("tls") else "none")
@@ -68,9 +90,201 @@ def _link_card(p: dict) -> str:
     return (
         '<li class="cfg"><div class="cfg-main"><div class="cfg-name">' + e(p.get("name") or "—") + "</div>"
         '<div class="chips">' + "".join(chips) + "</div>"
-        '<div class="cfg-addr ltr">' + e(p.get("server", "")) + ":" + e(p.get("port", "")) + "</div></div>"
+        '<div class="cfg-addr ltr">' + _addr(p) + "</div></div>"
         '<button class="btn sm" data-copy="' + e(p.get("raw", "")) + '">کپی</button></li>'
     )
+
+
+def _cfg_row(p: dict, i: int) -> str:
+    """Terminal-style row."""
+    return (
+        '<li class="tm-row"><span class="tm-i">' + f"{i:02d}" + '</span><span class="tm-n">' + e(p.get("name") or "—") + "</span>"
+        '<span class="tm-p">' + e(_proto_text(p)) + '</span><span class="tm-a ltr">' + _addr(p) + "</span>"
+        '<button class="btn sm" data-copy="' + e(p.get("raw", "")) + '" type="button">copy</button></li>'
+    )
+
+
+def _cfg_leg(p: dict, i: int) -> str:
+    """Ticket-itinerary line."""
+    return (
+        '<li class="tk-leg"><span class="tk-no">№ ' + f"{i:02d}" + '</span><div><b>' + e(p.get("name") or "—") + "</b>"
+        '<small>' + e(_proto_text(p)) + '</small></div><span class="tk-addr">' + _addr(p) + "</span>"
+        '<button class="btn sm" data-copy="' + e(p.get("raw", "")) + '" type="button">کپی</button></li>'
+    )
+
+
+def _cfgs(c, render, cls: str, empty: str = NO_CFG) -> str:
+    if not c.links:
+        return empty
+    return f'<ul class="{cls}">' + "".join(render(p, i) for i, p in enumerate(c.links, 1)) + "</ul>"
+
+
+def _date(ts, empty="—") -> str:
+    return f'<span class="date" data-ts="{int(ts)}">—</span>' if ts else empty
+
+
+def _kv(title: str, val: str, cls: str = "") -> str:
+    return f'<div class="kv"><span class="k">{title}</span><span class="v{cls}">{val}</span></div>'
+
+
+def _top(c) -> str:
+    return (f'<div class="top"><div class="brand">{e(c.brand)}</div>'
+            '<button class="btn sm" id="theme" type="button" aria-label="تم">🌓 تم</button></div>')
+
+
+def _ring(c) -> str:
+    return (
+        '<div class="ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="tr" cx="60" cy="60" r="52"/>'
+        f'<circle class="pg {c.ring_tone}" cx="60" cy="60" r="52" stroke-dasharray="{c.ring_c:.2f}" stroke-dashoffset="{c.ring_off:.2f}"/></svg>'
+        f'<div class="mid"><b>{c.pct_txt}</b><span>{c.pct_sub}</span></div></div>')
+
+
+def _stats(c, days: bool = True) -> str:
+    out = (f'<div class="stat"><span class="k">مصرف‌شده</span><span class="v">{fmt_bytes(c.used)}</span></div>'
+           f'<div class="stat"><span class="k">حجم کل</span><span class="v">{fmt_bytes(c.limit)}</span></div>'
+           f'<div class="stat"><span class="k">باقی‌مانده</span><span class="v">{fmt_bytes(c.remaining)}</span></div>')
+    if days:
+        out += f'<div class="stat"><span class="k">{c.days_sub}</span><span class="v">{c.days_txt}</span></div>'
+    return out
+
+
+def _details(c) -> str:
+    rows = [_kv("نام کاربری", e(c.username), " ltr"), _kv("وضعیت", e(c.label))]
+    if c.service:
+        rows.append(_kv("سرویس", e(c.service)))
+    rows += [_kv("تاریخ شروع", _date(c.created)), _kv("تاریخ پایان", _date(c.expire, "نامحدود")),
+             _kv("آخرین اتصال", _date(c.online_at, "هنوز متصل نشده")),
+             _kv("بازنشانی حجم", e(RESET.get(c.reset, c.reset))), _kv("تعداد کانفیگ‌ها", fa(len(c.links)))]
+    return "".join(rows)
+
+
+def _sub_box(c) -> str:
+    return (f'<div class="sublink"><code id="sub">{e(c.sub_url)}</code>'
+            f'<button class="btn pri" data-copy="{e(c.sub_url)}" type="button">کپی لینک</button></div>'
+            '<p class="muted" style="margin:10px 0 0;font-size:13px">این لینک شخصی شماست؛ آن را با کسی به اشتراک نگذارید.</p>')
+
+
+def _link_section(c, title: str = "لینک اشتراک", sid: str = "") -> str:
+    ident = f' id="{sid}"' if sid else ""
+    return (f'<section class="card"{ident}><h2>{title}</h2>'
+            f'<div class="two"><div>{_sub_box(c)}{c.imports_html}</div>{c.qr_block}</div></section>')
+
+
+def _ascii_bar(pct: float, width: int = 28) -> str:
+    n = round(width * max(0.0, min(100.0, pct)) / 100)
+    return "█" * n + "░" * (width - n)
+
+
+# ---------------------------------------------------------------- layouts (one per template)
+def _layout_classic(c) -> str:
+    hero = (f'<section class="card"><div class="hero">{_ring(c)}<div class="hero-info"><div class="uname">{e(c.username)}</div>'
+            f'<span class="badge {c.tone}">{e(c.label)}</span>{c.time_bar}<div class="grid">{_stats(c)}</div></div></div></section>')
+    return (_top(c) + c.alerts_html + hero
+            + f'<section class="card"><h2>مشخصات اشتراک</h2>{_details(c)}</section>'
+            + _link_section(c)
+            + f'<section class="card"><h2>کانفیگ‌ها</h2>{_cfgs(c, lambda p, i: _link_card(p), "cfgs")}</section>'
+            + f'<section class="card"><h2>راهنمای اتصال</h2>{STEPS}</section>'
+            + f'<div class="foot">{e(c.brand)}</div>')
+
+
+def _layout_sidebar(c) -> str:
+    """Dashboard: sticky profile sidebar + nav, content column starts with stat tiles, then link, configs."""
+    facts = (_kv("سرویس", e(c.service)) if c.service else "") + _kv("آخرین اتصال", _date(c.online_at, "هنوز متصل نشده"))
+    side = (f'<aside class="sb-side"><div class="sb-profile">{_ring(c)}<div class="uname">{e(c.username)}</div>'
+            f'<span class="badge {c.tone}">{e(c.label)}</span>{c.time_bar}<div class="sb-facts">{facts}</div></div>'
+            '<nav class="sb-nav"><a href="#sb-link">🔗 لینک اشتراک</a><a href="#sb-cfg">⚙️ کانفیگ‌ها</a>'
+            '<a href="#sb-info">📋 مشخصات</a><a href="#sb-guide">📖 راهنما</a></nav></aside>')
+    main = (f'<main class="sb-main"><div class="sb-stats">{_stats(c)}</div>'
+            + _link_section(c, sid="sb-link")
+            + f'<section class="card" id="sb-cfg"><h2>کانفیگ‌ها</h2>{_cfgs(c, lambda p, i: _link_card(p), "cfgs")}</section>'
+            + f'<section class="card" id="sb-info"><h2>مشخصات اشتراک</h2>{_details(c)}</section>'
+            + f'<section class="card" id="sb-guide"><h2>راهنمای اتصال</h2>{STEPS}</section></main>')
+    return _top(c) + c.alerts_html + f'<div class="sb-grid">{side}{main}</div><div class="foot">{e(c.brand)}</div>'
+
+
+def _layout_bento(c) -> str:
+    """Poster/bento grid: big name sticker, usage as vertical columns, tiles of different sizes."""
+    if c.limit:
+        heights = (100.0, max(c.pct, 2.0 if c.used else 0.0), 100.0 - c.pct)
+        kinds = ("tot", c.ring_tone, "rem")
+    else:
+        heights = (100.0, 4.0 if c.used else 0.0, 100.0)
+        kinds = ("inf", "ok", "inf")
+    labels = (("حجم کل", c.limit), ("مصرف‌شده", c.used), ("باقی‌مانده", c.remaining))
+    cols = "".join(
+        f'<div class="col"><b class="col-v">{fmt_bytes(v)}</b><div class="col-bar"><i class="{k}" style="height:{h:.1f}%"></i></div>'
+        f'<span class="col-k">{t}</span></div>' for (t, v), h, k in zip(labels, heights, kinds))
+    tag = f'<span class="bn-tag">{e(c.service)}</span>' if c.service else ""
+    head = f'<header class="bn-head"><div class="bn-name">{e(c.username)}</div><span class="badge {c.tone}">{e(c.label)}</span>{tag}</header>'
+    tiles = (
+        f'<section class="bn-tile bn-usage"><h2>مصرف</h2><div class="cols">{cols}</div></section>'
+        f'<section class="bn-tile bn-ringt"><h2>سهم مصرف</h2>{_ring(c)}</section>'
+        f'<section class="bn-tile bn-days"><h2>زمان</h2><div class="bn-big">{c.days_txt}</div><span class="k">{c.days_sub}</span>{c.time_bar}</section>'
+        f'<section class="bn-tile bn-link"><h2>لینک اشتراک</h2><div class="two"><div>{_sub_box(c)}</div>{c.qr_block}</div></section>'
+        f'<section class="bn-tile bn-apps"><h2>اتصال سریع</h2>{c.imports_html}</section>'
+        f'<section class="bn-tile bn-info"><h2>مشخصات</h2>{_details(c)}</section>'
+        f'<section class="bn-tile bn-cfg"><h2>کانفیگ‌ها</h2>{_cfgs(c, lambda p, i: _link_card(p), "cfgs")}</section>'
+        f'<section class="bn-tile bn-guide"><h2>راهنما</h2>{STEPS}</section>')
+    return _top(c) + c.alerts_html + head + f'<div class="bn-grid">{tiles}</div><div class="foot">{e(c.brand)}</div>'
+
+
+def _layout_terminal(c) -> str:
+    """Console windows: key=value status + ASCII meters, config listing first, details last."""
+    def line(k: str, v: str) -> str:
+        return f'<div class="tm-l"><span class="tm-k">{k}</span><span class="tm-eq">=</span><span class="tm-v">{v}</span></div>'
+
+    def meter(name: str, pct: float, tone: str, txt: str) -> str:
+        return (f'<div class="tm-meter" role="img" aria-label="{name} {txt}">{name:<6}[<span class="tm-fill {tone}">'
+                f'{_ascii_bar(pct)}</span>] {txt}</div>')
+
+    meters = meter("usage", c.pct if c.limit else 0, c.ring_tone, c.pct_txt)
+    if c.time_pct is not None:
+        t_tone = "bad" if c.time_pct >= 90 else "warn" if c.time_pct >= 70 else "ok"
+        meters += meter("time", c.time_pct, t_tone, fa(f"{c.time_pct:.0f}") + "٪")
+    status = ('<section class="card tm-win"><h2>cat status</h2>' + line("user", e(c.username))
+              + line("state", f'<span class="badge {c.tone}">{e(c.label)}</span>') + line("used", fmt_bytes(c.used))
+              + line("total", fmt_bytes(c.limit)) + line("left", fmt_bytes(c.remaining)) + line("ttl", c.days_txt)
+              + meters + '</section>')
+    cfgs = _cfgs(c, _cfg_row, "tm-list", '<p class="muted"># no configs</p>')
+    return (_top(c) + c.alerts_html + status
+            + f'<section class="card"><h2>ls configs/</h2>{cfgs}</section>'
+            + _link_section(c, "echo $SUB_URL")
+            + f'<section class="card"><h2>stat subscription</h2>{_details(c)}</section>'
+            + f'<section class="card"><h2>man connect</h2>{STEPS}</section>'
+            + f'<div class="foot">{e(c.brand)}</div>')
+
+
+def _layout_ticket(c) -> str:
+    """Boarding pass: landscape ticket (main + QR stub), usage as a ruler, configs as itinerary legs."""
+    fields = [("وضعیت", f'<span class="badge {c.tone}">{e(c.label)}</span>'), ("سرویس", e(c.service) if c.service else "—"),
+              ("بازنشانی", e(RESET.get(c.reset, c.reset))), ("آخرین اتصال", _date(c.online_at, "هنوز متصل نشده")),
+              ("کانفیگ‌ها", fa(len(c.links)))]
+    fields_html = "".join(f'<div class="tk-f"><span class="k">{k}</span><span class="v">{v}</span></div>' for k, v in fields)
+    fill = c.pct if c.limit else 0
+    ruler = (f'<div class="tk-usage"><div class="tk-usage-t"><span>مصرف</span><b>{c.pct_txt}</b></div>'
+             f'<div class="tk-ruler"><i class="{c.ring_tone}" style="width:{fill:.1f}%"></i></div>'
+             f'<div class="tk-scale"><span>{fa(0)}</span><span>{fmt_bytes(c.used)}</span><span>{fmt_bytes(c.limit)}</span></div>{c.time_bar}</div>')
+    main = (f'<div class="tk-main"><div class="tk-eyebrow"><span>{e(c.brand)}</span><span>SUBSCRIPTION PASS</span></div>'
+            f'<div class="tk-holder">{e(c.username)}</div>'
+            f'<div class="tk-route"><div class="tk-pt"><small>شروع</small><b>{_date(c.created)}</b></div><div class="tk-mid"></div>'
+            f'<div class="tk-pt"><small>پایان</small><b>{_date(c.expire, "نامحدود")}</b></div></div>'
+            f'<div class="tk-fields">{fields_html}</div>{ruler}</div>')
+    stub = (f'<div class="tk-stub"><div class="tk-days"><b>{c.days_txt}</b><small>{c.days_sub}</small></div>{c.qr_block}'
+            f'<button class="btn pri" data-copy="{e(c.sub_url)}" type="button">کپی لینک</button><div class="tk-code" aria-hidden="true"></div></div>')
+    return (_top(c) + c.alerts_html + f'<article class="tk-pass">{main}{stub}</article>'
+            + f'<section class="card"><h2>مسیر اتصال · کانفیگ‌ها</h2>{_cfgs(c, _cfg_leg, "tk-legs")}</section>'
+            + _link_section(c)
+            + f'<section class="card"><h2>راهنمای اتصال</h2>{STEPS}</section>'
+            + f'<div class="foot">{e(c.brand)}</div>')
+
+
+LAYOUTS = {
+    "classic": _layout_classic,
+    "sunset": _layout_sidebar,
+    "aurora": _layout_bento,
+    "midnight": _layout_terminal,
+    "paper": _layout_ticket,
+}
 
 
 def render_subscription_page(*, nonce: str, brand: str, username: str, state: str, used: int, limit: int | None,
@@ -113,10 +327,6 @@ def render_subscription_page(*, nonce: str, brand: str, username: str, state: st
     else:
         days_txt, days_sub = f"{fa(math.ceil(days_left))} روز", "تا پایان اشتراک"
 
-    def ts_cell(title, ts, empty="—"):
-        val = f'<span class="date" data-ts="{int(ts)}">—</span>' if ts else empty
-        return f'<div class="kv"><span class="k">{title}</span><span class="v">{val}</span></div>'
-
     imports = {}
     for group, name, href in import_links(sub_url, username):
         imports.setdefault(group, []).append(f'<a class="btn app" href="{e(href)}" rel="noopener">{e(name)}</a>')
@@ -124,18 +334,22 @@ def render_subscription_page(*, nonce: str, brand: str, username: str, state: st
         f'<div class="grp"><span class="grp-t">{e(g)}</span><div class="grp-b">{"".join(items)}</div></div>'
         for g, items in imports.items())
 
-    if links:
-        cfgs = "".join(_link_card(p) for p in links)
-        cfg_block = f'<ul class="cfgs">{cfgs}</ul>'
-    else:
-        cfg_block = '<p class="muted">در حال حاضر کانفیگی برای نمایش وجود ندارد.</p>'
-
     time_bar = ""
     if time_pct is not None:
         time_bar = (f'<div class="bar"><i class="{"bad" if time_pct >= 90 else "warn" if time_pct >= 70 else "ok"}" '
                     f'style="width:{time_pct:.1f}%"></i></div>')
 
     qr_block = f'<div class="qr" aria-label="QR">{qr_svg}</div>' if qr_svg else ""
+    pct_txt = (fa(f"{pct:.0f}") + "٪") if limit else "∞"
+    pct_sub = "مصرف‌شده" if limit else "حجم نامحدود"
+
+    c = SimpleNamespace(
+        brand=brand, username=username, label=label, tone=tone, alerts_html=alerts_html, pct=pct, pct_txt=pct_txt,
+        pct_sub=pct_sub, limit=limit, used=used, remaining=remaining, days_txt=days_txt, days_sub=days_sub,
+        time_pct=time_pct, time_bar=time_bar, ring_c=ring_c, ring_off=ring_off, ring_tone=ring_tone, service=service,
+        reset=reset, created=created, expire=expire, online_at=online_at, links=links, sub_url=sub_url,
+        qr_block=qr_block, imports_html=imports_html)
+    inner = LAYOUTS.get(tpl, _layout_classic)(c)
 
     return f"""<!doctype html>
 <html lang="fa" dir="rtl"><head><meta charset="utf-8">
@@ -196,46 +410,7 @@ ol.steps{{margin:0;padding:0 20px 0 0;color:var(--mu)}}ol.steps li{{margin-botto
 @media(prefers-reduced-motion:reduce){{*{{transition:none!important}}}}
 {theme_css(tpl)}</style></head><body class="t-{tpl}">
 <div class="wrap">
- <div class="top"><div class="brand">{e(brand)}</div><button class="btn sm" id="theme" type="button" aria-label="تم">🌓 تم</button></div>
- {alerts_html}
- <section class="card">
-  <div class="hero">
-   <div class="ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="tr" cx="60" cy="60" r="52"/><circle class="pg {ring_tone}" cx="60" cy="60" r="52" stroke-dasharray="{ring_c:.2f}" stroke-dashoffset="{ring_off:.2f}"/></svg>
-    <div class="mid"><b>{fa(f"{pct:.0f}") + "٪" if limit else "∞"}</b><span>{"مصرف‌شده" if limit else "حجم نامحدود"}</span></div></div>
-   <div class="hero-info"><div class="uname">{e(username)}</div><span class="badge {tone}">{e(label)}</span>
-    {time_bar}
-    <div class="grid">
-     <div class="stat"><span class="k">مصرف‌شده</span><span class="v">{fmt_bytes(used)}</span></div>
-     <div class="stat"><span class="k">حجم کل</span><span class="v">{fmt_bytes(limit)}</span></div>
-     <div class="stat"><span class="k">باقی‌مانده</span><span class="v">{fmt_bytes(remaining)}</span></div>
-     <div class="stat"><span class="k">{days_sub}</span><span class="v">{days_txt}</span></div>
-    </div></div>
-  </div>
- </section>
- <section class="card"><h2>مشخصات اشتراک</h2>
-  <div class="kv"><span class="k">نام کاربری</span><span class="v ltr">{e(username)}</span></div>
-  <div class="kv"><span class="k">وضعیت</span><span class="v">{e(label)}</span></div>
-  {f'<div class="kv"><span class="k">سرویس</span><span class="v">{e(service)}</span></div>' if service else ""}
-  {ts_cell("تاریخ شروع", created)}
-  {ts_cell("تاریخ پایان", expire, "نامحدود")}
-  {ts_cell("آخرین اتصال", online_at, "هنوز متصل نشده")}
-  <div class="kv"><span class="k">بازنشانی حجم</span><span class="v">{e(RESET.get(reset, reset))}</span></div>
-  <div class="kv"><span class="k">تعداد کانفیگ‌ها</span><span class="v">{fa(len(links))}</span></div>
- </section>
- <section class="card"><h2>لینک اشتراک</h2>
-  <div class="two"><div>
-   <div class="sublink"><code id="sub">{e(sub_url)}</code><button class="btn pri" data-copy="{e(sub_url)}" type="button">کپی لینک</button></div>
-   <p class="muted" style="margin:10px 0 0;font-size:13px">این لینک شخصی شماست؛ آن را با کسی به اشتراک نگذارید.</p>
-   {imports_html}
-  </div>{qr_block}</div>
- </section>
- <section class="card"><h2>کانفیگ‌ها</h2>{cfg_block}</section>
- <section class="card"><h2>راهنمای اتصال</h2>
-  <ol class="steps"><li>یکی از برنامه‌ها را نصب کنید: <b>v2rayNG</b> (اندروید)، <b>Streisand</b> یا <b>Shadowrocket</b> (آیفون)، <b>Hiddify</b> (همه سیستم‌ها).</li>
-  <li>روی دکمه‌ی همان برنامه در بالا بزنید، یا لینک اشتراک را کپی و در برنامه از بخش «افزودن اشتراک» وارد کنید.</li>
-  <li>اشتراک را بروزرسانی کنید و یک کانفیگ را انتخاب و وصل شوید.</li></ol>
- </section>
- <div class="foot">{e(brand)}</div>
+{inner}
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script nonce="{e(nonce)}">
