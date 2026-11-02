@@ -73,29 +73,47 @@ THEMES = {
         "@ .stat,@ .cfg,@ .sublink code,@ .qr,@ .chip,@ .badge,@ .alert,@ .bar,@ .bar i,@ .toast{border-radius:0}@ .stat{background:transparent;border:1px dashed var(--bd)}@ .badge{border:1px solid currentColor}"
         "@ .btn{border-radius:0;background:transparent;color:var(--ac);border-color:var(--ac)}@ .btn.pri{background:var(--ac);color:#021208}"
         "@media(max-width:760px){@ .wrap{display:block}@ .hero{flex-wrap:wrap}@ .vcol{width:100%}}")},
-    # Ticket / receipt: narrow centered strip, dashed tear lines, side notches, barcode footer.
+    # Ticket / boarding pass: wide pass with a left stub (ring + thin punch meters) torn off by a dashed
+    # perforation; main body holds details + link; configs as tear-off tiles; steps as a footer row; barcode.
     "paper": {"label": "بلیط", "css": _theme("paper", _TICKET, _TICKET_D,
-        "@ .wrap{max-width:440px;padding-top:28px}@ .top{justify-content:center;gap:16px}"
-        "@ .card{position:relative;margin:0;border:0;border-bottom:2px dashed var(--bd);border-radius:0;box-shadow:0 2px 0 rgba(0,0,0,.06);padding:20px 22px}"
-        "@ .card:first-of-type{border-top:6px double var(--fg);border-radius:6px 6px 0 0}@ .card:last-of-type{border-bottom:0;border-radius:0 0 6px 6px}"
-        "@ .card::before,@ .card::after{content:'';position:absolute;bottom:-11px;width:20px;height:20px;border-radius:50%;background:var(--bg);z-index:1}@ .card::before{right:-10px}@ .card::after{left:-10px}@ .card:last-of-type::before,@ .card:last-of-type::after{display:none}"
+        "@ .wrap{max-width:920px;padding-top:28px;display:grid;grid-template-columns:270px 1fr;gap:0;align-items:stretch}"
+        "@ .wrap>.top,@ .wrap>.alert,@ .wrap>.foot{grid-column:1/-1}@ .top{justify-content:center;gap:16px}@ .alert{border-radius:0}"
+        "@ .card{position:relative;margin:0;border:0;border-radius:0;box-shadow:none;padding:20px 22px;border-bottom:2px dashed var(--bd)}"
+        "@ .card:nth-of-type(1){grid-row:span 2;border-top:6px double var(--fg);border-inline-end:3px dashed var(--bd);border-radius:10px 0 0 0;text-align:center}"
+        "@ .card:nth-of-type(2){border-top:6px double var(--fg);border-radius:0 10px 0 0}"
+        "@ .card:nth-of-type(4){grid-column:1/-1;border-top:0}@ .card:nth-of-type(5){grid-column:1/-1;border-bottom:0;border-radius:0 0 10px 10px}"
+        "@ .card:nth-of-type(1)::before,@ .card:nth-of-type(1)::after{content:'';position:absolute;inset-inline-end:-13px;width:24px;height:24px;border-radius:50%;background:var(--bg);z-index:1}"
+        "@ .card:nth-of-type(1)::before{top:-12px}@ .card:nth-of-type(1)::after{bottom:-12px}"
         "@ .card h2{text-align:center;font-size:13px;letter-spacing:3px;border-bottom:1px solid var(--fg);padding-bottom:6px}"
-        "@ .hero{flex-direction:column;text-align:center;gap:14px}@ .hero-info{min-width:0;width:100%}@ .uname{text-align:center;font-family:ui-monospace,Consolas,monospace}@ .ring,@ .ring svg{width:120px;height:120px}@ .ring circle{stroke-width:5;stroke-linecap:butt}"
+        "@ .hero{flex-direction:column;gap:14px}@ .hero-info{min-width:0;width:100%}@ .uname{text-align:center;font-family:ui-monospace,Consolas,monospace}@ .ring{margin:0 auto}@ .ring,@ .ring svg{width:120px;height:120px}@ .ring circle{stroke-width:5;stroke-linecap:butt}"
+        "@ .vcol{display:flex;flex-direction:column;gap:6px;width:100%}@ .vc{position:relative;height:16px;border:1px solid var(--fg)}"
+        "@ .vc i{position:absolute;top:0;bottom:0;inset-inline-start:0;width:var(--p);background-image:repeating-linear-gradient(135deg,rgba(0,0,0,.28) 0 2px,transparent 2px 5px)}"
+        "@ .vc em{position:relative;z-index:1;font-style:normal;font-size:10px;line-height:14px;padding:0 6px;color:var(--fg);text-shadow:0 0 3px var(--card),0 0 3px var(--card)}"
         "@ .grid{grid-template-columns:1fr 1fr}@ .stat{background:transparent;border:1px dashed var(--bd);border-radius:0;text-align:center}@ .stat .v,@ .kv .v{font-family:ui-monospace,Consolas,monospace}"
-        "@ .btn,@ .cfg,@ .qr,@ .chip,@ .badge,@ .bar,@ .bar i,@ .sublink code{border-radius:0}@ .btn{border:1.5px solid var(--fg)}@ .btn.pri{background:var(--fg);color:var(--bg)}@ .cfg{background:transparent}"
+        "@ .btn,@ .cfg,@ .qr,@ .chip,@ .badge,@ .bar,@ .bar i,@ .sublink code{border-radius:0}@ .btn{border:1.5px solid var(--fg)}@ .btn.pri{background:var(--fg);color:var(--bg)}"
+        "@ .cfgs{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}@ .cfg{background:transparent;border:1px dashed var(--fg)}"
+        "@ ol.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}"
         "@ .brand{font-weight:600;letter-spacing:3px}@ .badge{border:1px solid currentColor;background:transparent!important}"
-        "@ .foot::before{content:'';display:block;height:34px;margin-bottom:8px;background:repeating-linear-gradient(90deg,var(--fg) 0 2px,transparent 2px 4px,var(--fg) 4px 5px,transparent 5px 9px,var(--fg) 9px 12px,transparent 12px 14px)}")},
-    # Sidebar dashboard: sticky gradient profile column + content column.
-    "sunset": {"label": "داشبورد سایدبار", "css": _theme("sunset", _SUNSET, _SUNSET_D,
-        "@ .wrap{max-width:1080px;display:grid;grid-template-columns:300px 1fr;gap:16px;align-items:start}"
-        "@ .wrap>.top,@ .wrap>.alert,@ .wrap>.foot{grid-column:1/-1}@ .card{margin:0;border-radius:22px;grid-column:2}"
-        "@ .card h2{border-inline-start:5px solid var(--ac);padding-inline-start:10px}"
-        "@ .card:first-of-type{grid-column:1;grid-row:span 4;position:sticky;top:16px;padding:26px 20px;background:linear-gradient(160deg,#f97316,#ec4899);color:#fff;border:0}"
-        "@ .card:first-of-type .hero{flex-direction:column;text-align:center;gap:14px}@ .card:first-of-type .hero-info{min-width:0;width:100%}@ .card:first-of-type .uname{text-align:center;font-size:20px}@ .card:first-of-type .grid{grid-template-columns:1fr 1fr}"
-        "@ .card:first-of-type .k,@ .card:first-of-type .ring .mid span{color:rgba(255,255,255,.85)}"
-        "@ .card:first-of-type .stat{background:rgba(255,255,255,.2)}@ .card:first-of-type .ring .tr{stroke:rgba(255,255,255,.3)}@ .card:first-of-type .ring circle.pg{stroke:#fff}@ .card:first-of-type .bar{background:rgba(255,255,255,.3)}@ .card:first-of-type .bar i{background:#fff}"
-        "@ .card:first-of-type .badge{background:rgba(255,255,255,.25);color:#fff}@ .btn{border-radius:99px}@ .btn.pri{background:linear-gradient(135deg,#f97316,#ec4899);border:0}@ .chip{border-radius:99px}"
-        "@media(max-width:860px){@ .wrap{display:block}@ .card{margin-bottom:16px}@ .card:first-of-type{position:static}}")},
+        "@ .foot::before{content:'';display:block;height:34px;margin-bottom:8px;background:repeating-linear-gradient(90deg,var(--fg) 0 2px,transparent 2px 4px,var(--fg) 4px 5px,transparent 5px 9px,var(--fg) 9px 12px,transparent 12px 14px)}"
+        "@media(max-width:760px){@ .wrap{display:block}@ .card:nth-of-type(1){border-inline-end:0;border-radius:10px 10px 0 0}@ .card:nth-of-type(1)::before,@ .card:nth-of-type(1)::after{display:none}@ .card:nth-of-type(2){border-top:0;border-radius:0}}")},
+    # Bento: rounded gradient banner (ring + glowing pill meters) on top, then an asymmetric 12-column tile grid.
+    "sunset": {"label": "بنتو گرادیانت", "css": _theme("sunset", _SUNSET, _SUNSET_D,
+        "@ .wrap{max-width:1040px;display:grid;grid-template-columns:repeat(12,1fr);gap:16px;align-items:stretch}"
+        "@ .wrap>.top,@ .wrap>.alert,@ .wrap>.foot{grid-column:1/-1}@ .top{margin-bottom:0}@ .alert{margin-bottom:0}"
+        "@ .card{margin:0;border-radius:28px;grid-column:span 6}"
+        "@ .card:nth-of-type(2){grid-column:span 5}@ .card:nth-of-type(3){grid-column:span 7}@ .card:nth-of-type(4){grid-column:span 7}@ .card:nth-of-type(5){grid-column:span 5;background:var(--soft)}"
+        "@ .card h2::before{content:'';display:inline-block;width:10px;height:10px;border-radius:50%;margin-inline-end:8px;background:linear-gradient(135deg,#f97316,#ec4899)}"
+        "@ .card:nth-of-type(1){grid-column:1/-1;padding:28px 30px;background:linear-gradient(120deg,#f97316,#ec4899);color:#fff;border:0}"
+        "@ .hero{flex-wrap:nowrap;gap:28px}@ .hero-info{min-width:0}@ .uname{font-size:24px}"
+        "@ .card:nth-of-type(1) .k,@ .card:nth-of-type(1) .ring .mid span{color:rgba(255,255,255,.85)}"
+        "@ .card:nth-of-type(1) .stat{background:rgba(255,255,255,.2)}@ .card:nth-of-type(1) .ring .tr{stroke:rgba(255,255,255,.3)}@ .card:nth-of-type(1) .ring circle.pg{stroke:#fff}@ .card:nth-of-type(1) .bar{background:rgba(255,255,255,.3)}@ .card:nth-of-type(1) .bar i{background:#fff}"
+        "@ .card:nth-of-type(1) .badge{background:rgba(255,255,255,.25);color:#fff}"
+        "@ .vcol{display:flex;gap:40px;height:120px;flex:none;margin-bottom:26px}"
+        "@ .vc{position:relative;width:28px;height:100%;border-radius:99px;background:rgba(255,255,255,.28)}"
+        "@ .vc i{position:absolute;inset-inline:0;bottom:0;height:var(--p);min-height:6px;border-radius:99px;background:#fff!important;box-shadow:0 0 14px rgba(255,255,255,.6)}"
+        "@ .vc em{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;width:64px;text-align:center;font-style:normal;font-size:10.5px;line-height:1.2;color:#fff}"
+        "@ .btn{border-radius:99px}@ .btn.pri{background:linear-gradient(135deg,#f97316,#ec4899);border:0}@ .chip{border-radius:99px}"
+        "@media(max-width:860px){@ .wrap{display:block}@ .card{margin-bottom:16px}@ .hero{flex-wrap:wrap}@ .vcol{margin:0 auto 26px}}")},
 }
 
 
