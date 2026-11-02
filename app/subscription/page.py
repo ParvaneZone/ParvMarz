@@ -73,10 +73,15 @@ def _link_card(p: dict) -> str:
     )
 
 
+def _tone(p: float) -> str:
+    return "bad" if p >= 90 else "warn" if p >= 70 else "ok"
+
+
 def render_subscription_page(*, nonce: str, brand: str, username: str, state: str, used: int, limit: int | None,
                              expire: int, created: int, now: int, online_at: int | None, service: str,
                              reset: str, on_hold_days: int | None, links: list[dict], sub_url: str,
                              qr_svg: str = "", template: str = "classic") -> str:
+    from app.subscription.layouts import LAYOUTS
     from app.subscription.themes import THEMES, theme_css
     tpl = template if template in THEMES else "classic"
     label, tone = STATUS.get(state, (state, "mute"))
@@ -87,7 +92,8 @@ def render_subscription_page(*, nonce: str, brand: str, username: str, state: st
     time_pct = None if days_left is None or not total_days else max(0.0, min(100.0, (1 - days_left / total_days) * 100))
     ring_c = 2 * math.pi * 52
     ring_off = ring_c * (1 - pct / 100.0)
-    ring_tone = "bad" if pct >= 90 else "warn" if pct >= 70 else "ok"
+    ring_tone = _tone(pct)
+    pct_txt = fa(f"{pct:.0f}") + "٪" if limit else "∞"
 
     alerts = []
     if state == "expired":
@@ -117,6 +123,9 @@ def render_subscription_page(*, nonce: str, brand: str, username: str, state: st
         val = f'<span class="date" data-ts="{int(ts)}">—</span>' if ts else empty
         return f'<div class="kv"><span class="k">{title}</span><span class="v">{val}</span></div>'
 
+    def ts_span(ts, empty):
+        return f'<span class="date" data-ts="{int(ts)}">—</span>' if ts else empty
+
     imports = {}
     for group, name, href in import_links(sub_url, username):
         imports.setdefault(group, []).append(f'<a class="btn app" href="{e(href)}" rel="noopener">{e(name)}</a>')
@@ -125,17 +134,51 @@ def render_subscription_page(*, nonce: str, brand: str, username: str, state: st
         for g, items in imports.items())
 
     if links:
-        cfgs = "".join(_link_card(p) for p in links)
-        cfg_block = f'<ul class="cfgs">{cfgs}</ul>'
+        cfg_block = f'<ul class="cfgs">{"".join(_link_card(p) for p in links)}</ul>'
     else:
         cfg_block = '<p class="muted">در حال حاضر کانفیگی برای نمایش وجود ندارد.</p>'
 
     time_bar = ""
     if time_pct is not None:
-        time_bar = (f'<div class="bar"><i class="{"bad" if time_pct >= 90 else "warn" if time_pct >= 70 else "ok"}" '
-                    f'style="width:{time_pct:.1f}%"></i></div>')
+        time_bar = f'<div class="bar"><i class="{_tone(time_pct)}" style="width:{time_pct:.1f}%"></i></div>'
+    vol_bar = f'<div class="bar"><i class="{ring_tone}" style="width:{pct:.1f}%"></i></div>' if limit else ""
 
-    qr_block = f'<div class="qr" aria-label="QR">{qr_svg}</div>' if qr_svg else ""
+    def kv(k, v):
+        return f'<div class="kv"><span class="k">{k}</span><span class="v">{v}</span></div>'
+
+    c = {
+        "u": e(username), "b": e(brand), "sub": e(sub_url), "links": links, "alerts": alerts_html,
+        "pct": pct, "time_pct": time_pct, "has_limit": bool(limit), "pct_txt": pct_txt, "ring_tone": ring_tone,
+        "usage_caption": "مصرف‌شده" if limit else "حجم نامحدود",
+        "service_txt": e(service) if service else "",
+        "start": ts_span(created, "—"), "end": ts_span(expire, "نامحدود"),
+        "badge": f'<span class="badge {tone}">{e(label)}</span>',
+        "time_bar": time_bar, "vol_bar": vol_bar,
+        "ring": ('<div class="ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="tr" cx="60" cy="60" r="52"/>'
+                 f'<circle class="pg {ring_tone}" cx="60" cy="60" r="52" stroke-dasharray="{ring_c:.2f}" stroke-dashoffset="{ring_off:.2f}"/></svg>'
+                 f'<div class="mid"><b>{pct_txt}</b><span>{"مصرف‌شده" if limit else "حجم نامحدود"}</span></div></div>'),
+        "stats": (f'<div class="stat"><span class="k">مصرف‌شده</span><span class="v">{fmt_bytes(used)}</span></div>'
+                  f'<div class="stat"><span class="k">حجم کل</span><span class="v">{fmt_bytes(limit)}</span></div>'
+                  f'<div class="stat"><span class="k">باقی‌مانده</span><span class="v">{fmt_bytes(remaining)}</span></div>'
+                  f'<div class="stat"><span class="k">{days_sub}</span><span class="v">{days_txt}</span></div>'),
+        "stat_rows": (kv("مصرف‌شده", fmt_bytes(used)) + kv("حجم کل", fmt_bytes(limit))
+                      + kv("باقی‌مانده", fmt_bytes(remaining)) + kv(days_sub, days_txt)),
+        "details": (kv("نام کاربری", f'<span class="ltr">{e(username)}</span>') + kv("وضعیت", e(label))
+                    + (kv("سرویس", e(service)) if service else "")
+                    + ts_cell("تاریخ شروع", created) + ts_cell("تاریخ پایان", expire, "نامحدود")
+                    + ts_cell("آخرین اتصال", online_at, "هنوز متصل نشده")
+                    + kv("بازنشانی حجم", e(RESET.get(reset, reset))) + kv("تعداد کانفیگ‌ها", fa(len(links)))),
+        "sublink": (f'<div class="sublink"><code id="sub">{e(sub_url)}</code>'
+                    f'<button class="btn pri" data-copy="{e(sub_url)}" type="button">کپی لینک</button></div>'
+                    '<p class="muted" style="margin:10px 0 0;font-size:13px">این لینک شخصی شماست؛ آن را با کسی به اشتراک نگذارید.</p>'),
+        "imports": imports_html,
+        "qr": f'<div class="qr" aria-label="QR">{qr_svg}</div>' if qr_svg else "",
+        "cfgs": cfg_block,
+        "guide": ('<ol class="steps"><li>یکی از برنامه‌ها را نصب کنید: <b>v2rayNG</b> (اندروید)، <b>Streisand</b> یا <b>Shadowrocket</b> (آیفون)، <b>Hiddify</b> (همه سیستم‌ها).</li>'
+                  '<li>روی دکمه‌ی همان برنامه بزنید، یا لینک اشتراک را کپی و در برنامه از بخش «افزودن اشتراک» وارد کنید.</li>'
+                  '<li>اشتراک را بروزرسانی کنید و یک کانفیگ را انتخاب و وصل شوید.</li></ol>'),
+    }
+    body = LAYOUTS[tpl](c)
 
     return f"""<!doctype html>
 <html lang="fa" dir="rtl"><head><meta charset="utf-8">
@@ -161,7 +204,6 @@ body{{margin:0;background:var(--bg);color:var(--fg);font:15px/1.8 Vazirmatn,Taho
 .ring .tr{{stroke:var(--soft)}}.ring .pg.ok{{stroke:var(--ok)}}.ring .pg.warn{{stroke:var(--warn)}}.ring .pg.bad{{stroke:var(--bad)}}
 .ring .mid{{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.3}}
 .ring .mid b{{font-size:26px}}.ring .mid span{{font-size:12px;color:var(--mu)}}
-.hero-info{{flex:1;min-width:220px}}
 .uname{{font-size:22px;font-weight:800;word-break:break-all;direction:ltr;text-align:right}}
 .badge{{display:inline-block;padding:2px 12px;border-radius:99px;font-size:13px;font-weight:700;margin-top:4px}}
 .badge.ok{{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}}.badge.bad{{background:color-mix(in srgb,var(--bad) 15%,transparent);color:var(--bad)}}
@@ -197,44 +239,7 @@ ol.steps{{margin:0;padding:0 20px 0 0;color:var(--mu)}}ol.steps li{{margin-botto
 {theme_css(tpl)}</style></head><body class="t-{tpl}">
 <div class="wrap">
  <div class="top"><div class="brand">{e(brand)}</div><button class="btn sm" id="theme" type="button" aria-label="تم">🌓 تم</button></div>
- {alerts_html}
- <section class="card">
-  <div class="hero">
-   <div class="ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="tr" cx="60" cy="60" r="52"/><circle class="pg {ring_tone}" cx="60" cy="60" r="52" stroke-dasharray="{ring_c:.2f}" stroke-dashoffset="{ring_off:.2f}"/></svg>
-    <div class="mid"><b>{fa(f"{pct:.0f}") + "٪" if limit else "∞"}</b><span>{"مصرف‌شده" if limit else "حجم نامحدود"}</span></div></div>
-   <div class="hero-info"><div class="uname">{e(username)}</div><span class="badge {tone}">{e(label)}</span>
-    {time_bar}
-    <div class="grid">
-     <div class="stat"><span class="k">مصرف‌شده</span><span class="v">{fmt_bytes(used)}</span></div>
-     <div class="stat"><span class="k">حجم کل</span><span class="v">{fmt_bytes(limit)}</span></div>
-     <div class="stat"><span class="k">باقی‌مانده</span><span class="v">{fmt_bytes(remaining)}</span></div>
-     <div class="stat"><span class="k">{days_sub}</span><span class="v">{days_txt}</span></div>
-    </div></div>
-  </div>
- </section>
- <section class="card"><h2>مشخصات اشتراک</h2>
-  <div class="kv"><span class="k">نام کاربری</span><span class="v ltr">{e(username)}</span></div>
-  <div class="kv"><span class="k">وضعیت</span><span class="v">{e(label)}</span></div>
-  {f'<div class="kv"><span class="k">سرویس</span><span class="v">{e(service)}</span></div>' if service else ""}
-  {ts_cell("تاریخ شروع", created)}
-  {ts_cell("تاریخ پایان", expire, "نامحدود")}
-  {ts_cell("آخرین اتصال", online_at, "هنوز متصل نشده")}
-  <div class="kv"><span class="k">بازنشانی حجم</span><span class="v">{e(RESET.get(reset, reset))}</span></div>
-  <div class="kv"><span class="k">تعداد کانفیگ‌ها</span><span class="v">{fa(len(links))}</span></div>
- </section>
- <section class="card"><h2>لینک اشتراک</h2>
-  <div class="two"><div>
-   <div class="sublink"><code id="sub">{e(sub_url)}</code><button class="btn pri" data-copy="{e(sub_url)}" type="button">کپی لینک</button></div>
-   <p class="muted" style="margin:10px 0 0;font-size:13px">این لینک شخصی شماست؛ آن را با کسی به اشتراک نگذارید.</p>
-   {imports_html}
-  </div>{qr_block}</div>
- </section>
- <section class="card"><h2>کانفیگ‌ها</h2>{cfg_block}</section>
- <section class="card"><h2>راهنمای اتصال</h2>
-  <ol class="steps"><li>یکی از برنامه‌ها را نصب کنید: <b>v2rayNG</b> (اندروید)، <b>Streisand</b> یا <b>Shadowrocket</b> (آیفون)، <b>Hiddify</b> (همه سیستم‌ها).</li>
-  <li>روی دکمه‌ی همان برنامه در بالا بزنید، یا لینک اشتراک را کپی و در برنامه از بخش «افزودن اشتراک» وارد کنید.</li>
-  <li>اشتراک را بروزرسانی کنید و یک کانفیگ را انتخاب و وصل شوید.</li></ol>
- </section>
+ {body}
  <div class="foot">{e(brand)}</div>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
