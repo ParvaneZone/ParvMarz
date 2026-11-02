@@ -11,7 +11,7 @@ const gb = (n: number) => (n / GB).toFixed(2);
 const tone = (s: string) => (s === "active" ? "green" : s === "limited" || s === "expired" ? "red" : s === "on_hold" ? "orange" : "gray");
 /** Backend datetimes may come without a timezone (SQLite); they are UTC. */
 const parse = (v?: string | null) => (v ? new Date(/(Z|[+-]\d\d:?\d\d)$/i.test(v) ? v : v + "Z") : null);
-const fmt = (v?: string | null) => { const d = parse(v); return d && !isNaN(+d) ? d.toLocaleString() : ""; };
+const fmt = (v?: string | null) => { const d = parse(v); return d && !isNaN(+d) ? d.toLocaleString("en-US") : ""; };
 
 function Row({ k, children }: { k: string; children: React.ReactNode }) {
   return <HStack justify="space-between" align="flex-start" py={2} borderBottomWidth="1px" borderStyle="dashed" spacing={4}>
@@ -48,7 +48,7 @@ export function UsersList({ c, loading, items, isSudo, can, sel, setSel, stLabel
         <Td fontWeight={600} className="ltr">{x.username}{isOnline(x.id) && <Badge ms={2} colorScheme="green">{t("آنلاین", "online")}</Badge>}</Td>
         <Td><Badge colorScheme={tone(x.status)}>{stLabel(x.status)}</Badge></Td>
         <Td minW="150px"><Text fontSize="sm" className="ltr">{usage(x)}</Text><Progress mt={1} value={pct(x)} size="xs" borderRadius="full" colorScheme={bar(x)} /></Td>
-        <Td display={{ base: "none", md: "table-cell" }} className="ltr">{x.expire ? parse(x.expire)!.toLocaleDateString() : "—"}</Td></Tr>)}</Tbody></Table></Box>
+        <Td display={{ base: "none", md: "table-cell" }} className="ltr">{x.expire ? parse(x.expire)!.toLocaleDateString("en-US") : "—"}</Td></Tr>)}</Tbody></Table></Box>
     <Modal isOpen={!!u} onClose={() => setOpenId(null)} isCentered scrollBehavior="inside"><ModalOverlay />
       {u && <ModalContent mx={3}><ModalHeader pb={1}><HStack spacing={3} flexWrap="wrap"><Heading size="md" className="ltr" wordBreak="break-all">{u.username}</Heading><Badge colorScheme={tone(u.status)}>{stLabel(u.status)}</Badge>{isOnline(u.id) && <Badge colorScheme="green">{t("آنلاین", "online")}</Badge>}</HStack></ModalHeader><ModalCloseButton />
         <ModalBody pb={5}>
@@ -58,7 +58,7 @@ export function UsersList({ c, loading, items, isSudo, can, sel, setSel, stLabel
           <Row k={t("سرویس", "Service")}>{svcName(u.service_id)}</Row>
           <Row k={t("آخرین آنلاین", "Last online")}>{isOnline(u.id) ? t("همین الان", "Now") : fmt(seen(u.id)) || t("هنوز متصل نشده", "Never")}</Row>
           <Row k={t("تاریخ ساخت", "Created")}>{fmt(u.created_at) || "—"}</Row>
-          <Row k={t("انقضا", "Expires")}>{u.expire ? `${parse(u.expire)!.toLocaleDateString()} (${daysLeft(u)} ${t("روز", "d")})` : t("نامحدود", "Never")}</Row>
+          <Row k={t("انقضا", "Expires")}>{u.expire ? `${parse(u.expire)!.toLocaleDateString("en-US")} (${daysLeft(u)} ${t("روز", "d")})` : t("نامحدود", "Never")}</Row>
           {u.note && <Row k={t("یادداشت", "Note")}>{u.note}</Row>}
           {can("users.edit") && <Button mt={4} w="100%" h="46px" colorScheme="blue" onClick={() => run(() => onEdit(u))}>{t("ویرایش کاربر", "Edit user")}</Button>}
           <SimpleGrid columns={2} spacing={2} mt={2}>
