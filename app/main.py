@@ -11,7 +11,7 @@ from app.db.session import Base, engine, SessionLocal
 from app.db.models import Admin
 from app.core.security import hash_password
 from app.core.hardening import HostGuard, BlockSensitive, InputGuard, SecureHeaders, SubGuard, DASH_CSP
-from app.routers import auth, panels, system, subscription, admins, services, users, templates, bulk, inbounds, usage, ops, reports, api_keys, docs_api, geo, telegram
+from app.routers import auth, panels, system, subscription, admins, services, users, user_meta, templates, bulk, inbounds, usage, ops, reports, api_keys, docs_api, geo, telegram
 from app.jobs.scheduler import start_scheduler, stop_scheduler
 
 @asynccontextmanager
@@ -83,6 +83,7 @@ if not settings.split_mode:  # with a separate sub port the panel app serves no 
 app.include_router(admins.router)
 app.include_router(services.router)
 app.include_router(users.router)
+app.include_router(user_meta.router)
 app.include_router(templates.router)
 app.include_router(bulk.router)
 app.include_router(inbounds.router)
