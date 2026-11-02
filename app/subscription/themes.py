@@ -17,8 +17,8 @@ def _theme(tid: str, light: dict, dark: dict, extra: str) -> str:
             f"html[data-theme=dark] {b}{{{_v(dark)}}}" + re.sub(r"@(?!media)", b, extra))
 
 
-_AURORA = {"bg": "#eef0ff", "card": "rgba(255,255,255,.62)", "soft": "rgba(255,255,255,.55)", "bd": "rgba(255,255,255,.8)", "fg": "#1b1740", "mu": "#5d5a85", "ac": "#7c3aed", "ok": "#059669", "warn": "#d97706", "bad": "#e11d48", "sh": "0 10px 40px rgba(124,58,237,.15)"}
-_AURORA_D = {"bg": "#0b0a1f", "card": "rgba(30,27,75,.55)", "soft": "rgba(255,255,255,.07)", "bd": "rgba(167,139,250,.28)", "fg": "#ede9fe", "mu": "#a5a1d6", "ac": "#a78bfa", "ok": "#34d399", "warn": "#fbbf24", "bad": "#fb7185", "sh": "none"}
+_BRUT = {"bg": "#fff7d6", "card": "#ffffff", "soft": "#ffe45e", "bd": "#111111", "fg": "#111111", "mu": "#444444", "ac": "#ff3d81", "ok": "#0a8f3c", "warn": "#c26a00", "bad": "#d10029", "sh": "6px 6px 0 #111"}
+_BRUT_D = {"bg": "#141414", "card": "#1f1f1f", "soft": "#2a2a2a", "bd": "#f5f5f5", "fg": "#f5f5f5", "mu": "#bbbbbb", "ac": "#ff6fa5", "ok": "#4ade80", "warn": "#fbbf24", "bad": "#ff6b6b", "sh": "6px 6px 0 #f5f5f5"}
 _TERM = {"bg": "#020a05", "card": "#04140b", "soft": "#072114", "bd": "#0f5a32", "fg": "#b6ffd0", "mu": "#55b57c", "ac": "#39ff88", "ok": "#39ff88", "warn": "#ffd24a", "bad": "#ff5a5a", "sh": "none"}
 _TICKET = {"bg": "#e8e3d6", "card": "#fffdf7", "soft": "#f4f0e4", "bd": "#c9c2ae", "fg": "#1c1b18", "mu": "#6f6b5f", "ac": "#1c1b18", "ok": "#2f7d4f", "warn": "#a8620a", "bad": "#b4231b", "sh": "none"}
 _TICKET_D = {"bg": "#121110", "card": "#1d1c19", "soft": "#252420", "bd": "#45423a", "fg": "#f1eee6", "mu": "#a29d8e", "ac": "#f1eee6", "ok": "#6cc08b", "warn": "#e0a24a", "bad": "#ef7a72", "sh": "none"}
@@ -27,11 +27,19 @@ _SUNSET_D = {"bg": "#1f0f0a", "card": "#2b1710", "soft": "#3a1f14", "bd": "#5a30
 
 THEMES = {
     "classic": {"label": "کلاسیک", "css": ""},
-    "aurora": {"label": "شفق (شیشه‌ای)", "css": _theme("aurora", _AURORA, _AURORA_D,
-        "@{background:radial-gradient(1200px 600px at 85% -10%,color-mix(in srgb,var(--ac) 35%,transparent),transparent),radial-gradient(900px 500px at -10% 110%,color-mix(in srgb,#06b6d4 30%,transparent),transparent),var(--bg);min-height:100vh}"
-        "@ .card{backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-radius:28px}"
-        "@ .stat{border-radius:18px;border:1px solid var(--bd)}@ .btn.pri{background:linear-gradient(135deg,var(--ac),#06b6d4);border:0}"
-        "@ .ring circle{stroke-width:9}@ .brand{background:linear-gradient(90deg,var(--ac),#06b6d4);-webkit-background-clip:text;background-clip:text;color:transparent}")},
+    # Neo-brutalist: thick black outlines, hard offset shadows, flat pop colors, tilted tags.
+    "aurora": {"label": "نئوبروتال", "css": _theme("aurora", _BRUT, _BRUT_D,
+        "@{background-color:var(--bg);background-image:radial-gradient(color-mix(in srgb,var(--fg) 22%,transparent) 1.2px,transparent 1.2px);background-size:18px 18px}"
+        "@ .wrap{max-width:720px}@ .brand{display:inline-block;background:var(--fg);color:var(--bg);padding:2px 12px;transform:rotate(1.5deg)}"
+        "@ .card{margin-top:34px;border:3px solid var(--bd);border-radius:0;box-shadow:var(--sh)}"
+        "@ .card h2{display:inline-block;background:var(--ac);color:#fff;border:3px solid var(--bd);padding:2px 12px;margin:-36px 0 16px;transform:rotate(-1.5deg)}"
+        "@ .ring circle{stroke-width:14;stroke-linecap:butt}"
+        "@ .stat{border:3px solid var(--bd);border-radius:0;box-shadow:3px 3px 0 var(--bd);color:#111}@ .stat:nth-child(odd){background:#a0e7ff}@ .stat:nth-child(even){background:#ffe45e}@ .stat .k{color:#333}"
+        "@ .btn{border:3px solid var(--bd);border-radius:0;box-shadow:3px 3px 0 var(--bd);font-weight:800}@ .btn:active{transform:translate(3px,3px);box-shadow:none}@ .btn.pri{background:var(--ac);color:#fff}@ .btn.app{background:#a0e7ff;color:#111}"
+        "@ .cfg,@ .sublink code{border:3px solid var(--bd);border-radius:0}@ .qr,@ .chip,@ .badge,@ .alert,@ .toast{border-radius:0}"
+        "@ .badge{border:2px solid var(--bd);color:#111!important;background:#b8f2c9!important}@ .badge.bad{background:#ffb3b3!important}@ .badge.warn{background:#ffe45e!important}@ .badge.mute{background:#ddd!important}"
+        "@ .alert{border:3px solid var(--bd);background:#ffe45e;color:#111}@ .alert.bad{background:#ffb3b3}"
+        "@ .bar{height:14px;border:3px solid var(--bd);border-radius:0;background:var(--card)}@ .bar i{border-radius:0}@ .kv{border-bottom:2px solid var(--bd)}")},
     # Terminal: console windows, monospace, green-on-black, square corners.
     "midnight": {"label": "ترمینال", "css": _theme("midnight", _TERM, _TERM,
         "@{background:repeating-linear-gradient(0deg,rgba(57,255,136,.035) 0 1px,transparent 1px 3px),var(--bg);color-scheme:dark;font-family:ui-monospace,Consolas,Menlo,Vazirmatn,monospace}"
