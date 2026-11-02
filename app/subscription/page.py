@@ -19,6 +19,9 @@ STATUS = {
 RESET = {"no_reset": "بدون ریست", "day": "روزانه", "week": "هفتگی", "month": "ماهانه", "year": "سالانه"}
 PROTO = {"vless": "VLESS", "vmess": "VMess", "trojan": "Trojan", "ss": "Shadowsocks", "hysteria2": "Hysteria2"}
 _FA = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+_SVG = '<svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+ICON_THEME = _SVG + '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor"/></svg>'
+ICON_CHECK = _SVG + '<path d="m5 12 5 5 9-10"/></svg>'
 
 
 def fa(value) -> str:
@@ -152,6 +155,7 @@ def render_subscription_page(*, nonce: str, brand: str, username: str, state: st
                     f'style="width:{time_pct:.1f}%"></i></div>')
 
     qr_block = f'<div class="qr" aria-label="QR">{qr_svg}</div>' if qr_svg else ""
+    check_js = ICON_CHECK.replace("'", "\\'")
 
     return f"""<!doctype html>
 <html lang="fa" dir="rtl"><head><meta charset="utf-8">
@@ -195,6 +199,7 @@ body{{margin:0;background:var(--bg);color:var(--fg);font:15px/1.8 Vazirmatn,Taho
 .muted{{color:var(--mu)}}
 .btn{{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:42px;padding:0 16px;border:1px solid var(--bd);border-radius:12px;background:var(--card);color:var(--fg);font:inherit;font-weight:700;cursor:pointer;text-decoration:none}}
 .btn.pri{{background:var(--ac);border-color:var(--ac);color:#fff}}.btn.sm{{min-height:36px;padding:0 12px;font-size:13px}}.btn:active{{transform:scale(.98)}}
+.ic{{flex:none}}
 .btn:focus-visible,a:focus-visible{{outline:2px solid var(--ac);outline-offset:2px}}
 .sublink{{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap}}
 .sublink code{{flex:1;min-width:200px;direction:ltr;text-align:left;background:var(--soft);border:1px solid var(--bd);border-radius:12px;padding:9px 12px;font:12.5px/1.6 ui-monospace,Consolas,monospace;word-break:break-all;user-select:all}}
@@ -208,12 +213,12 @@ body{{margin:0;background:var(--bg);color:var(--fg);font:15px/1.8 Vazirmatn,Taho
 .chip.proto{{color:var(--ac);border-color:color-mix(in srgb,var(--ac) 40%,var(--bd))}}.chip.sec{{color:var(--ok)}}
 ol.steps{{margin:0;padding:0 20px 0 0;color:var(--mu)}}ol.steps li{{margin-bottom:4px}}ol.steps b{{color:var(--fg)}}
 .foot{{text-align:center;color:var(--mu);font-size:12px;margin-top:22px}}
-.toast{{position:fixed;inset-inline:0;bottom:22px;margin:auto;width:max-content;max-width:90vw;background:var(--fg);color:var(--bg);padding:9px 18px;border-radius:99px;font-weight:700;opacity:0;transform:translateY(10px);transition:.25s;pointer-events:none}}.toast.on{{opacity:1;transform:none}}
+.toast{{position:fixed;inset-inline:0;bottom:22px;margin:auto;width:max-content;max-width:90vw;display:flex;align-items:center;gap:6px;background:var(--fg);color:var(--bg);padding:9px 18px;border-radius:99px;font-weight:700;opacity:0;transform:translateY(10px);transition:.25s;pointer-events:none}}.toast.on{{opacity:1;transform:none}}
 @media(max-width:520px){{.ring{{margin:0 auto}}.uname{{font-size:19px}}.cfg{{flex-wrap:wrap}}.cfg .btn{{width:100%}}}}
 @media(prefers-reduced-motion:reduce){{*{{transition:none!important}}}}
 {theme_css(tpl)}</style></head><body class="t-{tpl}">
 <div class="wrap">
- <div class="top"><div class="brand">{e(brand)}</div><button class="btn sm" id="theme" type="button" aria-label="تم">🌓 تم</button></div>
+ <div class="top"><div class="brand">{e(brand)}</div><button class="btn sm" id="theme" type="button" aria-label="تم">{ICON_THEME} تم</button></div>
  {alerts_html}
  <section class="card">
   <div class="hero">
@@ -259,12 +264,12 @@ ol.steps{{margin:0;padding:0 20px 0 0;color:var(--mu)}}ol.steps li{{margin-botto
 <script nonce="{e(nonce)}">
 (function(){{
 var $=function(s,r){{return(r||document).querySelectorAll(s)}},T=$('#toast')[0],tm;
-function toast(m){{T.textContent=m;T.className='toast on';clearTimeout(tm);tm=setTimeout(function(){{T.className='toast'}},1600)}}
+function toast(m,ok){{T.textContent='';if(ok)T.insertAdjacentHTML('beforeend','{check_js}');T.appendChild(document.createTextNode(m));T.className='toast on';clearTimeout(tm);tm=setTimeout(function(){{T.className='toast'}},1600)}}
 function copy(t){{
  if(navigator.clipboard&&window.isSecureContext)return navigator.clipboard.writeText(t);
  return new Promise(function(ok,no){{var a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();try{{document.execCommand('copy')?ok():no()}}catch(x){{no(x)}}document.body.removeChild(a)}});
 }}
-Array.prototype.forEach.call($('[data-copy]'),function(b){{b.addEventListener('click',function(){{copy(b.getAttribute('data-copy')).then(function(){{toast('کپی شد ✓')}},function(){{toast('کپی نشد؛ دستی کپی کنید')}})}})}});
+Array.prototype.forEach.call($('[data-copy]'),function(b){{b.addEventListener('click',function(){{copy(b.getAttribute('data-copy')).then(function(){{toast('کپی شد',1)}},function(){{toast('کپی نشد؛ دستی کپی کنید')}})}})}});
 var fmt=null,gfmt=null;
 try{{fmt=new Intl.DateTimeFormat('fa-IR-u-ca-persian',{{year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}});gfmt=new Intl.DateTimeFormat('en-GB',{{year:'numeric',month:'short',day:'2-digit'}})}}catch(x){{}}
 Array.prototype.forEach.call($('.date'),function(s){{var d=new Date(parseInt(s.getAttribute('data-ts'),10)*1000);s.textContent=fmt?fmt.format(d):d.toISOString().slice(0,16).replace('T',' ');if(gfmt){{s.title=gfmt.format(d)}}}});

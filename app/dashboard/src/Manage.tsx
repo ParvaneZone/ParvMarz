@@ -29,7 +29,7 @@ const strongPw = (v: string) => v.length >= 12 && /[a-z]/.test(v) && /[A-Z]/.tes
 function PwField({ value, onChange, t, w }: { value: string; onChange: (v: string) => void; t: (fa: string, en: string) => string; w?: string }) {
   const [show, setShow] = React.useState(false);
   return <HStack maxW={w}><Input autoComplete="new-password" className="ltr" type={show ? "text" : "password"} value={value} onChange={e => onChange(e.target.value)} />
-    <Button size="sm" flexShrink={0} title={t("ساخت رمز تصادفی قوی", "Generate strong password")} onClick={() => { onChange(genPw()); setShow(true); }}>🎲 {t("ساخت", "Generate")}</Button>
+    <Button size="sm" flexShrink={0} leftIcon={<Icon name="refresh" size={14} />} title={t("ساخت رمز تصادفی قوی", "Generate strong password")} onClick={() => { onChange(genPw()); setShow(true); }}>{t("ساخت", "Generate")}</Button>
     <Button size="sm" flexShrink={0} variant="outline" onClick={() => setShow(!show)}>{show ? t("پنهان", "Hide") : t("نمایش", "Show")}</Button>
     <Button size="sm" flexShrink={0} variant="outline" isDisabled={!value} onClick={() => void navigator.clipboard?.writeText(value)}>{t("کپی", "Copy")}</Button></HStack>;
 }
