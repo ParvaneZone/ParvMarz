@@ -34,7 +34,7 @@ body{font-family:Vazirmatn,Tahoma,"Segoe UI",system-ui,sans-serif;font-size:15px
 .shell select option{background:var(--card);color:var(--fg)}
 
 /* Chakra upper-cases and letter-spaces table headings; that breaks Persian letter joining. */
-.panel table th{text-transform:none;letter-spacing:normal;font-size:13px;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border)}
+.panel table th{text-transform:none;letter-spacing:normal;font-size:14px;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border)}
 .panel table td{border-bottom:1px solid var(--border);color:var(--fg);vertical-align:middle}
 .panel table tr:last-child td{border-bottom:0}
 
@@ -70,13 +70,13 @@ body{font-family:Vazirmatn,Tahoma,"Segoe UI",system-ui,sans-serif;font-size:15px
 /* ---------- typography hierarchy ---------- */
 .shell h1,.shell h2{font-weight:800;color:var(--fg);letter-spacing:normal;line-height:1.4}
 .shell h3,.shell h4{font-weight:700;color:var(--fg);letter-spacing:normal;line-height:1.5}
-.muted{color:var(--muted);font-weight:400;font-size:13.5px}
-.shell label.chakra-form__label{font-size:13px;font-weight:600;color:var(--muted);margin-bottom:6px}
+.muted{color:var(--muted);font-weight:400;font-size:14px}
+.shell label.chakra-form__label{font-size:14px;font-weight:600;color:var(--muted);margin-bottom:6px}
 .shell .chakra-badge{font-weight:600;letter-spacing:normal;text-transform:none}
 .shell .chakra-button{font-weight:600}
 .stat .chakra-stat__label{font-weight:500}
 .panel table td{font-size:14px}
-.menu-sec{font-size:12px;font-weight:700;color:var(--muted);opacity:.8;margin:0 4px 6px;letter-spacing:normal}
+.menu-sec{font-size:14px;font-weight:700;color:var(--muted);opacity:.8;margin:0 4px 6px;letter-spacing:normal}
 .guide .chakra-accordion__item{border-color:var(--border)}
 .guide .chakra-accordion__button:hover{background:var(--soft)}
 
@@ -131,3 +131,14 @@ html[dir="rtl"] .scroll-progress{transform-origin:right}
 .act-grp button,.shell td button.chakra-button{min-height:38px;min-width:76px;padding-inline:14px;font-size:14px;border-radius:10px;white-space:nowrap}
 .panel table td:last-child{min-width:260px}
 @media(max-width:600px){.act-grp{gap:6px}.act-grp button{flex:1 1 calc(50% - 6px);min-width:0}}
+
+/* ---------- touch targets (>=44px) and mobile tables ---------- */
+@media(pointer:coarse),(max-width:768px){
+  button,.chakra-button,.act-grp button,.shell td button.chakra-button{min-height:44px;min-width:44px;font-size:14px}
+  .shell input:not([type=checkbox]):not([type=radio]),.shell select,.chakra-modal__content input:not([type=checkbox]):not([type=radio]),.chakra-modal__content select,.chakra-drawer__content input:not([type=checkbox]):not([type=radio]){min-height:44px;font-size:14px}
+}
+@media(max-width:768px){
+  .hide-sm{display:none!important}
+  .panel table:not(.tscroll table){display:block;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .panel table td:last-child{min-width:0}
+}

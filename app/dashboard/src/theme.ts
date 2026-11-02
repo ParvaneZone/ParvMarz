@@ -88,6 +88,7 @@ export function buildTheme(p: Prefs) {
   return extendTheme({
     config: { initialColorMode: "light", useSystemColorMode: false },
     fonts: { body: "Vazirmatn, Tahoma, 'Segoe UI', system-ui, sans-serif", heading: "Vazirmatn, Tahoma, 'Segoe UI', system-ui, sans-serif" },
+    fontSizes: { xs: "0.875rem" }, // nothing smaller than 14px
     styles: { global: { body: { bg: "var(--bg)", color: "var(--fg)" } } },
     ...(p.accent ? { colors: { blue: scale(p.accent) } } : {}),
     components: {
