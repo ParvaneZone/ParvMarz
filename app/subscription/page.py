@@ -3,6 +3,10 @@
 Pure functions, no web-framework imports: easy to test. Everything that comes from outside
 (usernames, remarks from panels, URLs) is HTML-escaped. Only inline CSS/JS, no external assets, so
 it works on blocked/filtered networks.
+
+A template (see themes.py) can pick a *layout*: 'default' (hero card first), 'cols' (usage as vertical
+columns, configs before the link) or 'side' (sticky sidebar + main column). Layouts reorder/restructure
+the same blocks; the visual theme is still pure CSS.
 """
 import base64
 import html
@@ -19,6 +23,34 @@ STATUS = {
 RESET = {"no_reset": "بدون ریست", "day": "روزانه", "week": "هفتگی", "month": "ماهانه", "year": "سالانه"}
 PROTO = {"vless": "VLESS", "vmess": "VMess", "trojan": "Trojan", "ss": "Shadowsocks", "hysteria2": "Hysteria2"}
 _FA = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+
+# Structural CSS for the non-default layouts (scoped by body classes l-cols / l-side). Plain string, single braces.
+_LAYOUT_CSS = """
+.l-cols .idc{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.l-cols .idc .uname{flex:1;min-width:160px}
+.idmeta{color:var(--mu);font-size:13px}
+.cols-chart{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;align-items:end}
+.col{display:flex;flex-direction:column;align-items:center;text-align:center;gap:2px;min-width:0}
+.col-track{width:100%;height:190px;background:var(--soft);border-radius:14px;display:flex;align-items:flex-end;overflow:hidden}
+.col-track i{display:block;width:100%;border-radius:12px 12px 0 0}
+.col-track i.ok{background:var(--ok)}.col-track i.warn{background:var(--warn)}.col-track i.bad{background:var(--bad)}.col-track i.ac{background:var(--ac)}
+.col b{font-size:17px;margin-top:8px}.col span{font-size:12px;color:var(--mu)}
+.cols-sum{margin:14px 0 0;color:var(--mu);font-size:13px;text-align:center}
+.l-side .shell{max-width:1040px;display:grid;grid-template-columns:290px 1fr;gap:16px;align-items:start}
+.l-side .shell>.foot{grid-column:1/-1}
+.l-side .side{position:sticky;top:16px;margin:0}
+.l-side .side .top{margin-bottom:12px;flex-wrap:wrap}
+.l-side .side .uname{font-size:19px}
+.l-side .side .ring{margin:14px auto}
+.l-side .side .qr{margin:14px auto 0;width:max-content}
+.l-side .side .grp-b .btn{flex:1}
+.l-side .main{min-width:0}
+.prow{display:grid;grid-template-columns:64px 1fr auto;gap:12px;align-items:center;margin-bottom:12px}
+.prow:last-child{margin-bottom:0}
+.prow .bar{margin:0;height:12px}
+@media(max-width:860px){.l-side .shell{display:block}.l-side .side{position:static;margin-bottom:16px}}
+@media(max-width:520px){.col-track{height:140px}}
+"""
 
 
 def fa(value) -> str:
@@ -73,21 +105,30 @@ def _link_card(p: dict) -> str:
     )
 
 
+def _col(tone: str, height: float, value: str, name: str) -> str:
+    """One vertical usage column (layout 'cols')."""
+    return (f'<div class="col"><div class="col-track" aria-hidden="true"><i class="{tone}" style="height:{height:.1f}%"></i></div>'
+            f'<b>{value}</b><span>{name}</span></div>')
+
+
 def render_subscription_page(*, nonce: str, brand: str, username: str, state: str, used: int, limit: int | None,
                              expire: int, created: int, now: int, online_at: int | None, service: str,
                              reset: str, on_hold_days: int | None, links: list[dict], sub_url: str,
                              qr_svg: str = "", template: str = "classic") -> str:
     from app.subscription.themes import THEMES, theme_css
     tpl = template if template in THEMES else "classic"
+    layout = THEMES[tpl].get("layout", "default")
     label, tone = STATUS.get(state, (state, "mute"))
     pct = 0 if not limit else min(100.0, used * 100.0 / limit)
     remaining = None if limit is None else max(0, limit - used)
     days_left = None if not expire else (expire - now) / 86400
     total_days = None if not expire or not created or expire <= created else (expire - created) / 86400
     time_pct = None if days_left is None or not total_days else max(0.0, min(100.0, (1 - days_left / total_days) * 100))
+    time_tone = None if time_pct is None else "bad" if time_pct >= 90 else "warn" if time_pct >= 70 else "ok"
     ring_c = 2 * math.pi * 52
     ring_off = ring_c * (1 - pct / 100.0)
     ring_tone = "bad" if pct >= 90 else "warn" if pct >= 70 else "ok"
+    pct_cell = (fa(f"{pct:.0f}") + "٪") if limit else "∞"
 
     alerts = []
     if state == "expired":
@@ -132,10 +173,89 @@ def render_subscription_page(*, nonce: str, brand: str, username: str, state: st
 
     time_bar = ""
     if time_pct is not None:
-        time_bar = (f'<div class="bar"><i class="{"bad" if time_pct >= 90 else "warn" if time_pct >= 70 else "ok"}" '
-                    f'style="width:{time_pct:.1f}%"></i></div>')
+        time_bar = f'<div class="bar"><i class="{time_tone}" style="width:{time_pct:.1f}%"></i></div>'
 
     qr_block = f'<div class="qr" aria-label="QR">{qr_svg}</div>' if qr_svg else ""
+
+    # ---- shared blocks (each layout arranges them differently) ----
+    top_html = (f'<div class="top"><div class="brand">{e(brand)}</div>'
+                '<button class="btn sm" id="theme" type="button" aria-label="تم">🌓 تم</button></div>')
+    foot_html = f'<div class="foot">{e(brand)}</div>'
+    ring_html = (f'<div class="ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="tr" cx="60" cy="60" r="52"/>'
+                 f'<circle class="pg {ring_tone}" cx="60" cy="60" r="52" stroke-dasharray="{ring_c:.2f}" stroke-dashoffset="{ring_off:.2f}"/></svg>'
+                 f'<div class="mid"><b>{pct_cell}</b><span>{"مصرف‌شده" if limit else "حجم نامحدود"}</span></div></div>')
+    hero_card = f"""<section class="card">
+  <div class="hero">
+   {ring_html}
+   <div class="hero-info"><div class="uname">{e(username)}</div><span class="badge {tone}">{e(label)}</span>
+    {time_bar}
+    <div class="grid">
+     <div class="stat"><span class="k">مصرف‌شده</span><span class="v">{fmt_bytes(used)}</span></div>
+     <div class="stat"><span class="k">حجم کل</span><span class="v">{fmt_bytes(limit)}</span></div>
+     <div class="stat"><span class="k">باقی‌مانده</span><span class="v">{fmt_bytes(remaining)}</span></div>
+     <div class="stat"><span class="k">{days_sub}</span><span class="v">{days_txt}</span></div>
+    </div></div>
+  </div>
+ </section>"""
+    details_card = f"""<section class="card"><h2>مشخصات اشتراک</h2>
+  <div class="kv"><span class="k">نام کاربری</span><span class="v ltr">{e(username)}</span></div>
+  <div class="kv"><span class="k">وضعیت</span><span class="v">{e(label)}</span></div>
+  {f'<div class="kv"><span class="k">سرویس</span><span class="v">{e(service)}</span></div>' if service else ""}
+  {ts_cell("تاریخ شروع", created)}
+  {ts_cell("تاریخ پایان", expire, "نامحدود")}
+  {ts_cell("آخرین اتصال", online_at, "هنوز متصل نشده")}
+  <div class="kv"><span class="k">بازنشانی حجم</span><span class="v">{e(RESET.get(reset, reset))}</span></div>
+  <div class="kv"><span class="k">تعداد کانفیگ‌ها</span><span class="v">{fa(len(links))}</span></div>
+ </section>"""
+    sublink_row = f"""<div class="sublink"><code id="sub">{e(sub_url)}</code><button class="btn pri" data-copy="{e(sub_url)}" type="button">کپی لینک</button></div>
+   <p class="muted" style="margin:10px 0 0;font-size:13px">این لینک شخصی شماست؛ آن را با کسی به اشتراک نگذارید.</p>"""
+    link_card = f"""<section class="card"><h2>لینک اشتراک</h2>
+  <div class="two"><div>
+   {sublink_row}
+   {imports_html}
+  </div>{qr_block}</div>
+ </section>"""
+    cfg_card = f'<section class="card"><h2>کانفیگ‌ها</h2>{cfg_block}</section>'
+    guide_card = """<section class="card"><h2>راهنمای اتصال</h2>
+  <ol class="steps"><li>یکی از برنامه‌ها را نصب کنید: <b>v2rayNG</b> (اندروید)، <b>Streisand</b> یا <b>Shadowrocket</b> (آیفون)، <b>Hiddify</b> (همه سیستم‌ها).</li>
+  <li>روی دکمه‌ی همان برنامه در بالا بزنید، یا لینک اشتراک را کپی و در برنامه از بخش «افزودن اشتراک» وارد کنید.</li>
+  <li>اشتراک را بروزرسانی کنید و یک کانفیگ را انتخاب و وصل شوید.</li></ol>
+ </section>"""
+
+    # ---- layouts ----
+    wrap_open = '<div class="wrap">'
+    if layout == "cols":
+        # Identity strip -> usage as vertical columns -> configs first -> link/apps -> details -> guide.
+        meta = f'<span class="idmeta">{e(service)}</span>' if service else ""
+        id_card = (f'<section class="card idc"><div class="uname">{e(username)}</div>'
+                   f'<span class="badge {tone}">{e(label)}</span>{meta}</section>')
+        used_name = "مصرف‌شده" + (f" · {pct_cell}" if limit else "")
+        cols = _col(ring_tone, pct if limit else 0.0, fmt_bytes(used), used_name)
+        cols += _col("ac", (100.0 - pct) if limit else 100.0, fmt_bytes(remaining), "باقی‌مانده")
+        cols += _col(time_tone or "ok", time_pct or 0.0, days_txt, "زمان سپری‌شده")
+        usage_cols = (f'<section class="card"><h2>مصرف</h2><div class="cols-chart">{cols}</div>'
+                      f'<p class="cols-sum">حجم کل: {fmt_bytes(limit)} · {days_sub}</p></section>')
+        inner = "\n ".join([top_html, alerts_html, id_card, usage_cols, cfg_card, link_card, details_card, guide_card, foot_html])
+    elif layout == "side":
+        # Sticky sidebar (identity, ring, quick numbers, QR, app buttons) + main column (link, usage rows, configs...).
+        wrap_open = '<div class="wrap shell">'
+        side_stats = "".join(
+            f'<div class="kv"><span class="k">{k}</span><span class="v">{v}</span></div>'
+            for k, v in (("مصرف‌شده", fmt_bytes(used)), ("حجم کل", fmt_bytes(limit)),
+                         ("باقی‌مانده", fmt_bytes(remaining)), (days_sub, days_txt)))
+        aside = (f'<aside class="card side">{top_html}<div class="uname">{e(username)}</div>'
+                 f'<span class="badge {tone}">{e(label)}</span>{ring_html}{side_stats}{qr_block}{imports_html}</aside>')
+        rows = (f'<div class="prow"><span class="k">ترافیک</span><div class="bar"><i class="{ring_tone}" '
+                f'style="width:{pct:.1f}%"></i></div><span class="v">{pct_cell}</span></div>')
+        if time_pct is not None:
+            rows += (f'<div class="prow"><span class="k">زمان</span><div class="bar"><i class="{time_tone}" '
+                     f'style="width:{time_pct:.1f}%"></i></div><span class="v">{days_txt}</span></div>')
+        usage_rows = f'<section class="card"><h2>مصرف</h2>{rows}</section>'
+        link_side = f'<section class="card"><h2>لینک اشتراک</h2>{sublink_row}</section>'
+        main = "\n ".join([alerts_html, link_side, usage_rows, cfg_card, details_card, guide_card])
+        inner = f'{aside}\n <main class="main">{main}</main>\n {foot_html}'
+    else:
+        inner = "\n ".join([top_html, alerts_html, hero_card, details_card, link_card, cfg_card, guide_card, foot_html])
 
     return f"""<!doctype html>
 <html lang="fa" dir="rtl"><head><meta charset="utf-8">
@@ -194,48 +314,10 @@ ol.steps{{margin:0;padding:0 20px 0 0;color:var(--mu)}}ol.steps li{{margin-botto
 .toast{{position:fixed;inset-inline:0;bottom:22px;margin:auto;width:max-content;max-width:90vw;background:var(--fg);color:var(--bg);padding:9px 18px;border-radius:99px;font-weight:700;opacity:0;transform:translateY(10px);transition:.25s;pointer-events:none}}.toast.on{{opacity:1;transform:none}}
 @media(max-width:520px){{.ring{{margin:0 auto}}.uname{{font-size:19px}}.cfg{{flex-wrap:wrap}}.cfg .btn{{width:100%}}}}
 @media(prefers-reduced-motion:reduce){{*{{transition:none!important}}}}
-{theme_css(tpl)}</style></head><body class="t-{tpl}">
-<div class="wrap">
- <div class="top"><div class="brand">{e(brand)}</div><button class="btn sm" id="theme" type="button" aria-label="تم">🌓 تم</button></div>
- {alerts_html}
- <section class="card">
-  <div class="hero">
-   <div class="ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="tr" cx="60" cy="60" r="52"/><circle class="pg {ring_tone}" cx="60" cy="60" r="52" stroke-dasharray="{ring_c:.2f}" stroke-dashoffset="{ring_off:.2f}"/></svg>
-    <div class="mid"><b>{fa(f"{pct:.0f}") + "٪" if limit else "∞"}</b><span>{"مصرف‌شده" if limit else "حجم نامحدود"}</span></div></div>
-   <div class="hero-info"><div class="uname">{e(username)}</div><span class="badge {tone}">{e(label)}</span>
-    {time_bar}
-    <div class="grid">
-     <div class="stat"><span class="k">مصرف‌شده</span><span class="v">{fmt_bytes(used)}</span></div>
-     <div class="stat"><span class="k">حجم کل</span><span class="v">{fmt_bytes(limit)}</span></div>
-     <div class="stat"><span class="k">باقی‌مانده</span><span class="v">{fmt_bytes(remaining)}</span></div>
-     <div class="stat"><span class="k">{days_sub}</span><span class="v">{days_txt}</span></div>
-    </div></div>
-  </div>
- </section>
- <section class="card"><h2>مشخصات اشتراک</h2>
-  <div class="kv"><span class="k">نام کاربری</span><span class="v ltr">{e(username)}</span></div>
-  <div class="kv"><span class="k">وضعیت</span><span class="v">{e(label)}</span></div>
-  {f'<div class="kv"><span class="k">سرویس</span><span class="v">{e(service)}</span></div>' if service else ""}
-  {ts_cell("تاریخ شروع", created)}
-  {ts_cell("تاریخ پایان", expire, "نامحدود")}
-  {ts_cell("آخرین اتصال", online_at, "هنوز متصل نشده")}
-  <div class="kv"><span class="k">بازنشانی حجم</span><span class="v">{e(RESET.get(reset, reset))}</span></div>
-  <div class="kv"><span class="k">تعداد کانفیگ‌ها</span><span class="v">{fa(len(links))}</span></div>
- </section>
- <section class="card"><h2>لینک اشتراک</h2>
-  <div class="two"><div>
-   <div class="sublink"><code id="sub">{e(sub_url)}</code><button class="btn pri" data-copy="{e(sub_url)}" type="button">کپی لینک</button></div>
-   <p class="muted" style="margin:10px 0 0;font-size:13px">این لینک شخصی شماست؛ آن را با کسی به اشتراک نگذارید.</p>
-   {imports_html}
-  </div>{qr_block}</div>
- </section>
- <section class="card"><h2>کانفیگ‌ها</h2>{cfg_block}</section>
- <section class="card"><h2>راهنمای اتصال</h2>
-  <ol class="steps"><li>یکی از برنامه‌ها را نصب کنید: <b>v2rayNG</b> (اندروید)، <b>Streisand</b> یا <b>Shadowrocket</b> (آیفون)، <b>Hiddify</b> (همه سیستم‌ها).</li>
-  <li>روی دکمه‌ی همان برنامه در بالا بزنید، یا لینک اشتراک را کپی و در برنامه از بخش «افزودن اشتراک» وارد کنید.</li>
-  <li>اشتراک را بروزرسانی کنید و یک کانفیگ را انتخاب و وصل شوید.</li></ol>
- </section>
- <div class="foot">{e(brand)}</div>
+{_LAYOUT_CSS}
+{theme_css(tpl)}</style></head><body class="t-{tpl} l-{layout}">
+{wrap_open}
+ {inner}
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script nonce="{e(nonce)}">
