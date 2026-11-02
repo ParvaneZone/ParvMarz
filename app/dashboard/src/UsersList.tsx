@@ -3,6 +3,7 @@ import { Box, Heading, Text, Table, Thead, Tbody, Tr, Th, Td, Badge, Button, HSt
 import { useQuery } from "@tanstack/react-query";
 import type { Ctx } from "./Manage";
 import { copyText } from "./copy";
+import { useConfirm } from "./ConfirmModal";
 
 export type UserRow = { id: number; username: string; admin_id: number; service_id: number; status: string; data_limit: number | null; used_traffic: number; expire: string | null; note: string; subscription_url: string | null; created_at?: string };
 
@@ -23,6 +24,7 @@ type Props = { c: Ctx; loading: boolean; items: UserRow[]; isSudo: boolean; can:
 export function UsersList({ c, loading, items, isSudo, can, sel, setSel, stLabel, subUrl, onEdit, onQr, action, meName }: Props) {
   const { t, toast, api } = c;
   const [openId, setOpenId] = React.useState<number | null>(null);
+  const [ask, confirmNode] = useConfirm(t);
   const admins = useQuery({ queryKey: ["admins"], queryFn: () => api("/api/admins"), enabled: isSudo });
   const svcs = useQuery({ queryKey: ["services"], queryFn: () => api("/api/services") });
   const online = useQuery({ queryKey: ["users-online"], queryFn: () => api("/api/users/online"), refetchInterval: 30000 });
@@ -41,6 +43,7 @@ export function UsersList({ c, loading, items, isSudo, can, sel, setSel, stLabel
   if (loading) return <Text>{t("در حال بارگذاری…", "Loading…")}</Text>;
   if (!items.length) return <Text className="muted">{t("کاربری پیدا نشد.", "No users found.")}</Text>;
   return <>
+    {confirmNode}
     <Text className="muted" fontSize="sm" mb={2}>{t("برای جزئیات و عملیات، روی هر کاربر ضربه بزنید.", "Tap a user for details and actions.")}</Text>
     <Box className="tscroll"><Table size="sm"><Thead><Tr>{isSudo && <Th w="1%" />}<Th>{t("نام کاربری", "Username")}</Th><Th>{t("وضعیت", "Status")}</Th><Th>{t("مصرف", "Usage")}</Th><Th display={{ base: "none", md: "table-cell" }}>{t("انقضا", "Expires")}</Th></Tr></Thead>
       <Tbody>{items.map(x => <Tr key={x.id} cursor="pointer" _hover={{ bg: "blackAlpha.50", _dark: { bg: "whiteAlpha.100" } }} onClick={() => setOpenId(x.id)}>
@@ -64,10 +67,10 @@ export function UsersList({ c, loading, items, isSudo, can, sel, setSel, stLabel
           <SimpleGrid columns={2} spacing={2} mt={2}>
             {u.subscription_url && <Button h="44px" variant="outline" onClick={() => void copyText(subUrl(u)).then(ok => toast({ title: ok ? t("کپی شد", "Copied") : t("کپی نشد", "Copy failed"), status: ok ? "success" : "error", duration: 1500 }))}>{t("کپی لینک", "Copy link")}</Button>}
             {u.subscription_url && <Button h="44px" variant="outline" onClick={() => run(() => onQr(subUrl(u)))}>QR</Button>}
-            {can("users.reset") && <Button h="44px" variant="outline" onClick={() => confirm(t("مصرف ریست شود؟", "Reset usage?")) && void action(`${enc(u)}/reset`)}>{t("ریست مصرف", "Reset usage")}</Button>}
-            {can("users.revoke_sub") && <Button h="44px" variant="outline" onClick={() => confirm(t("لینک اشتراک ابطال شود؟", "Revoke subscription link?")) && void action(`${enc(u)}/revoke_sub`)}>{t("ابطال لینک", "Revoke link")}</Button>}
+            {can("users.reset") && <Button h="44px" variant="outline" onClick={() => ask({ title: t("مصرف ریست شود؟", "Reset usage?"), body: u.username, danger: true, confirmLabel: t("ریست مصرف", "Reset usage") }, () => void action(`${enc(u)}/reset`))}>{t("ریست مصرف", "Reset usage")}</Button>}
+            {can("users.revoke_sub") && <Button h="44px" variant="outline" onClick={() => ask({ title: t("لینک اشتراک ابطال شود؟", "Revoke subscription link?"), body: u.username, danger: true, confirmLabel: t("ابطال لینک", "Revoke link") }, () => void action(`${enc(u)}/revoke_sub`))}>{t("ابطال لینک", "Revoke link")}</Button>}
           </SimpleGrid>
-          {can("users.delete") && <Button mt={5} w="100%" h="44px" variant="outline" colorScheme="red" onClick={() => confirm(t("حذف شود؟", "Delete user?")) && run(() => void action(enc(u), "DELETE"))}>{t("حذف کاربر", "Delete user")}</Button>}
+          {can("users.delete") && <Button mt={5} w="100%" h="44px" variant="outline" colorScheme="red" onClick={() => ask({ title: t("کاربر حذف شود؟", "Delete user?"), body: u.username, danger: true, confirmLabel: t("حذف", "Delete") }, () => run(() => void action(enc(u), "DELETE")))}>{t("حذف کاربر", "Delete user")}</Button>}
         </ModalBody></ModalContent>}
     </Modal>
   </>;
