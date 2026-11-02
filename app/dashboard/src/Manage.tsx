@@ -35,6 +35,14 @@ function PwField({ value, onChange, t, w }: { value: string; onChange: (v: strin
 }
 const num = (v: string) => (v === "" ? null : Number(v));
 
+/** One shared action layout for table rows: primary + neutral actions on top, the dangerous one (red) apart below. */
+function RowActions({ main, extra, danger }: { main?: React.ReactNode; extra?: React.ReactNode; danger?: React.ReactNode }) {
+  return <Box>
+    <Box display="flex" flexWrap="wrap" alignItems="center" gap={2}>{main}{extra}</Box>
+    {danger && <Box mt={3} pt={2} borderTopWidth="1px" borderStyle="dashed">{danger}</Box>}
+  </Box>;
+}
+
 /* ---------------- Panels ---------------- */
 export function PanelsTab(c: Ctx) {
   const { api, t } = c; const run = useRun(c, ["panels"]);
@@ -73,16 +81,16 @@ export function PanelsTab(c: Ctx) {
       <HStack><Checkbox isChecked={f.verify_ssl} onChange={e => set("verify_ssl", e.target.checked)}>SSL</Checkbox><Checkbox isChecked={f.enabled} onChange={e => set("enabled", e.target.checked)}>{t("فعال", "Enabled")}</Checkbox></HStack>
     </SimpleGrid><HStack mt={4}><Button colorScheme="blue" onClick={save}>{t("ذخیره", "Save")}</Button><Button onClick={() => setF(null)}>{t("انصراف", "Cancel")}</Button></HStack>
       {editId && <Text mt={2} fontSize="sm" className="muted">{t("برای ویرایش، نام کاربری و رمز پنل باید دوباره وارد شود.", "Re-enter panel credentials when editing.")}</Text>}</Box>}
-    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>ID</Th><Th>{t("نام", "Name")}</Th><Th>{t("نوع", "Type")}</Th><Th>URL</Th><Th>{t("سلامت", "Health")}</Th><Th>{t("عملیات", "Actions")}</Th></Tr></Thead>
-      <Tbody>{(q.data || []).map((p: any) => <Tr key={p.id}><Td>{p.id}</Td><Td>{p.name}</Td><Td>{p.type}</Td><Td className="ltr">{p.base_url}</Td>
+    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th className="hide-sm">ID</Th><Th>{t("نام", "Name")}</Th><Th className="hide-sm">{t("نوع", "Type")}</Th><Th className="hide-sm">URL</Th><Th>{t("سلامت", "Health")}</Th><Th>{t("عملیات", "Actions")}</Th></Tr></Thead>
+      <Tbody>{(q.data || []).map((p: any) => <Tr key={p.id}><Td className="hide-sm">{p.id}</Td><Td>{p.name}</Td><Td className="hide-sm">{p.type}</Td><Td className="ltr hide-sm">{p.base_url}</Td>
         <Td><Badge colorScheme={p.status === "healthy" ? "green" : "red"}>{p.status}</Badge>{p.last_error && <Text fontSize="xs">{p.last_error}</Text>}</Td>
-        <Td><HStack className="act-grp" flexWrap="wrap" spacing={0}>
-          <Button size="sm" onClick={() => run(`/api/panels/${p.id}/test`, J("POST"))}>{t("تست", "Test")}</Button>
-          <Button size="sm" leftIcon={<Icon name="refresh" size={14} />} onClick={() => run(`/api/panels/${p.id}/sync`, J("POST"))}>{t("همگام‌سازی", "Sync")}</Button>
-          <Button size="sm" leftIcon={<Icon name="inbound" size={14} />} onClick={() => void pullInbounds(p, false)}>{t("اینباندها", "Inbounds")}</Button>
-          <Button size="sm" onClick={() => { setEditId(p.id); setF({ ...empty, name: p.name, type: p.type, base_url: p.base_url, enabled: p.enabled }); }}>{t("ویرایش", "Edit")}</Button>
-          <Button size="sm" colorScheme="red" onClick={() => confirm(t("حذف شود؟", "Delete?")) && run(`/api/panels/${p.id}`, J("DELETE"))}>{t("حذف", "Delete")}</Button>
-        </HStack></Td></Tr>)}</Tbody></Table></Box>
+        <Td><RowActions
+          main={<Button size="sm" colorScheme="blue" onClick={() => { setEditId(p.id); setF({ ...empty, name: p.name, type: p.type, base_url: p.base_url, enabled: p.enabled }); }}>{t("ویرایش", "Edit")}</Button>}
+          extra={<>
+            <Button size="sm" variant="outline" onClick={() => run(`/api/panels/${p.id}/test`, J("POST"))}>{t("تست", "Test")}</Button>
+            <Button size="sm" variant="outline" leftIcon={<Icon name="refresh" size={14} />} onClick={() => run(`/api/panels/${p.id}/sync`, J("POST"))}>{t("همگام‌سازی", "Sync")}</Button>
+            <Button size="sm" variant="outline" leftIcon={<Icon name="inbound" size={14} />} onClick={() => void pullInbounds(p, false)}>{t("اینباندها", "Inbounds")}</Button></>}
+          danger={<Button size="sm" variant="outline" colorScheme="red" onClick={() => confirm(t("حذف شود؟", "Delete?")) && run(`/api/panels/${p.id}`, J("DELETE"))}>{t("حذف", "Delete")}</Button>} /></Td></Tr>)}</Tbody></Table></Box>
     <Modal isOpen={!!inb} onClose={() => setInb(null)} size="xl" isCentered><ModalOverlay /><ModalContent><ModalHeader>{t("اینباندهای پنل", "Panel inbounds")}{inb?.panel ? ` — ${inb.panel.name}` : ""}</ModalHeader><ModalCloseButton /><ModalBody pb={6} overflowX="auto">
       <HStack mb={3} justify="space-between"><Text fontSize="sm" className="muted">{t("فقط اینباندهای واقعی پنل (نه سرویس یا گروه).", "Real panel inbounds only (not services or groups).")}</Text>
         <Button size="sm" leftIcon={<Icon name="refresh" size={14} />} isLoading={inb?.busy} onClick={() => inb && void pullInbounds(inb.panel, true)}>{t("دریافت مجدد از پنل", "Fetch from panel")}</Button></HStack>
@@ -157,11 +165,14 @@ export function ServicesTab(c: Ctx) {
       <F label={t("فعال", "Enabled")}><Switch isChecked={f.enabled} onChange={e => set("enabled", e.target.checked)} /></F>
     </SimpleGrid><HStack mt={4}><Button colorScheme="blue" onClick={() => run(editId ? `/api/services/${editId}` : "/api/services", J(editId ? "PUT" : "POST", f), () => setF(null))}>{t("ذخیره", "Save")}</Button><Button onClick={() => setF(null)}>{t("انصراف", "Cancel")}</Button></HStack></Box>}
     {(q.data || []).map((s: any) => <Box key={s.id} mb={4} p={3} borderWidth="1px" borderRadius="12px">
-      <HStack justify="space-between" flexWrap="wrap"><Box><Heading size="sm">{s.display_name} <Badge>{s.name}</Badge> {!s.enabled && <Badge colorScheme="red">off</Badge>} {s.user_count != null && <Badge colorScheme="blue">{s.user_count} {t("کاربر", "users")}</Badge>}</Heading><Text fontSize="sm" className="muted">{s.description}{s.inbound_mode && s.inbound_mode !== "all" ? ` · ${s.inbound_mode === "rotate" ? t("چرخشی", "rotate") : t("رندوم", "random")} ×${s.inbound_count}` : ""}</Text></Box>
-        {!s.inbound_names && <HStack className="act-grp" spacing={0}><Button size="sm" onClick={() => setAddFor(addFor === s.id ? null : s.id)}>{t("افزودن پنل", "Add panel")}</Button>
-          <Button size="sm" onClick={() => { setEditId(s.id); setF({ ...empty, name: s.name, display_name: s.display_name, description: s.description, enabled: s.enabled, sort_order: s.sort_order, sub_remark_template: s.sub_remark_template || empty.sub_remark_template, inbound_mode: s.inbound_mode || "all", inbound_interval: s.inbound_interval || 60, inbound_count: s.inbound_count || 1 }); }}>{t("ویرایش", "Edit")}</Button>
-          <Button size="sm" onClick={() => run(`/api/services/${s.id}/clone`, J("POST"))}>{t("کپی", "Clone")}</Button><Switch isChecked={s.enabled} onChange={e => run(`/api/services/${s.id}`, J("PUT", { name: s.name, display_name: s.display_name, description: s.description, enabled: e.target.checked, sort_order: s.sort_order, sub_remark_template: s.sub_remark_template, inbound_mode: s.inbound_mode, inbound_interval: s.inbound_interval, inbound_count: s.inbound_count }))} />
-          <Button size="sm" colorScheme="red" onClick={() => { setMv(""); setDel(s); }}>{t("حذف", "Delete")}</Button></HStack>}</HStack>
+      <HStack justify="space-between" align="flex-start" flexWrap="wrap"><Box><Heading size="sm">{s.display_name} <Badge>{s.name}</Badge> {!s.enabled && <Badge colorScheme="red">off</Badge>} {s.user_count != null && <Badge colorScheme="blue">{s.user_count} {t("کاربر", "users")}</Badge>}</Heading><Text fontSize="sm" className="muted">{s.description}{s.inbound_mode && s.inbound_mode !== "all" ? ` · ${s.inbound_mode === "rotate" ? t("چرخشی", "rotate") : t("رندوم", "random")} ×${s.inbound_count}` : ""}</Text></Box>
+        {!s.inbound_names && <RowActions
+          main={<Button size="sm" colorScheme="blue" onClick={() => { setEditId(s.id); setF({ ...empty, name: s.name, display_name: s.display_name, description: s.description, enabled: s.enabled, sort_order: s.sort_order, sub_remark_template: s.sub_remark_template || empty.sub_remark_template, inbound_mode: s.inbound_mode || "all", inbound_interval: s.inbound_interval || 60, inbound_count: s.inbound_count || 1 }); }}>{t("ویرایش", "Edit")}</Button>}
+          extra={<>
+            <Button size="sm" variant="outline" onClick={() => setAddFor(addFor === s.id ? null : s.id)}>{t("افزودن پنل", "Add panel")}</Button>
+            <Button size="sm" variant="outline" onClick={() => run(`/api/services/${s.id}/clone`, J("POST"))}>{t("کپی", "Clone")}</Button>
+            <Switch isChecked={s.enabled} onChange={e => run(`/api/services/${s.id}`, J("PUT", { name: s.name, display_name: s.display_name, description: s.description, enabled: e.target.checked, sort_order: s.sort_order, sub_remark_template: s.sub_remark_template, inbound_mode: s.inbound_mode, inbound_interval: s.inbound_interval, inbound_count: s.inbound_count }))} /></>}
+          danger={<Button size="sm" variant="outline" colorScheme="red" onClick={() => { setMv(""); setDel(s); }}>{t("حذف", "Delete")}</Button>} />}</HStack>
       {s.inbound_names?.length > 0 && <Text fontSize="sm" mt={2}>{s.inbound_names.join("، ")}</Text>}
       <Table size="sm" mt={2}><Tbody>{s.items.map((i: any) => <Tr key={i.id}><Td>{pname(i.panel_id)}</Td><Td>{(i.selected_names || i.selected_items || []).join(", ") || t("همه", "all")}</Td><Td>P{i.priority}</Td><Td><Switch isChecked={i.enabled} onChange={e => run(`/api/services/${s.id}/items/${i.id}`, J("PUT", { enabled: e.target.checked }))} /></Td><Td><Button size="sm" colorScheme="red" variant="outline" aria-label={t("حذف","Remove")} onClick={() => run(`/api/services/${s.id}/items/${i.id}`, J("DELETE"))}><Icon name="x" size={14} /></Button></Td></Tr>)}</Tbody></Table>
       {s.group_ids?.length > 0 && <Text fontSize="xs" className="muted" mt={1}>{t("دسته‌ها: ", "Groups: ")}{gname(s.group_ids)}</Text>}
@@ -193,10 +204,11 @@ export function TemplatesTab(c: Ctx) {
       <F label={t("ریست حجم", "Reset strategy")}><Select value={f.reset_strategy} onChange={e => set("reset_strategy", e.target.value)}>{[["no_reset", "بدون ریست"], ["day", "روزانه"], ["week", "هفتگی"], ["month", "ماهانه"], ["year", "سالانه"]].map(([x, l]) => <option key={x} value={x}>{t(l, x)}</option>)}</Select></F>
       <Checkbox isChecked={f.add_remaining_traffic} onChange={e => set("add_remaining_traffic", e.target.checked)}>{t("اضافه شدن حجم باقی‌مانده", "Add remaining traffic")}</Checkbox>
     </SimpleGrid><HStack mt={4}><Button colorScheme="blue" onClick={() => run(editId ? `/api/templates/${editId}` : "/api/templates", J(editId ? "PUT" : "POST", body()), () => setF(null))}>{t("ذخیره", "Save")}</Button><Button onClick={() => setF(null)}>{t("انصراف", "Cancel")}</Button></HStack></Box>}
-    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("نام", "Name")}</Th><Th>{t("سرویس", "Service")}</Th><Th>{t("حجم", "Traffic")}</Th><Th>{t("مدت", "Days")}</Th><Th /></Tr></Thead>
-      <Tbody>{(q.data || []).map((x: any) => <Tr key={x.id}><Td>{x.name}</Td><Td>{(sv.data || []).find((s: any) => s.id === x.service_id)?.display_name ?? x.service_id}</Td><Td>{x.data_limit == null ? "∞" : (x.data_limit / GB).toFixed(1) + " GB"}</Td><Td>{x.duration ?? "∞"}</Td>
-        <Td><HStack className="act-grp" spacing={0}><Button size="sm" onClick={() => { setEditId(x.id); setF({ name: x.name, service_id: String(x.service_id), data_gb: x.data_limit == null ? "" : String(x.data_limit / GB), duration: x.duration == null ? "" : String(x.duration), username_prefix: x.username_prefix, username_suffix: x.username_suffix, reset_strategy: x.reset_strategy, add_remaining_traffic: x.add_remaining_traffic }); }}>{t("ویرایش", "Edit")}</Button>
-          <Button size="sm" colorScheme="red" onClick={() => confirm(t("حذف شود؟", "Delete?")) && run(`/api/templates/${x.id}`, J("DELETE"))}>{t("حذف", "Delete")}</Button></HStack></Td></Tr>)}</Tbody></Table></Box>
+    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("نام", "Name")}</Th><Th className="hide-sm">{t("سرویس", "Service")}</Th><Th>{t("حجم", "Traffic")}</Th><Th className="hide-sm">{t("مدت", "Days")}</Th><Th /></Tr></Thead>
+      <Tbody>{(q.data || []).map((x: any) => <Tr key={x.id}><Td>{x.name}</Td><Td className="hide-sm">{(sv.data || []).find((s: any) => s.id === x.service_id)?.display_name ?? x.service_id}</Td><Td>{x.data_limit == null ? "∞" : (x.data_limit / GB).toFixed(1) + " GB"}</Td><Td className="hide-sm">{x.duration ?? "∞"}</Td>
+        <Td><RowActions
+          main={<Button size="sm" colorScheme="blue" onClick={() => { setEditId(x.id); setF({ name: x.name, service_id: String(x.service_id), data_gb: x.data_limit == null ? "" : String(x.data_limit / GB), duration: x.duration == null ? "" : String(x.duration), username_prefix: x.username_prefix, username_suffix: x.username_suffix, reset_strategy: x.reset_strategy, add_remaining_traffic: x.add_remaining_traffic }); }}>{t("ویرایش", "Edit")}</Button>}
+          danger={<Button size="sm" variant="outline" colorScheme="red" onClick={() => confirm(t("حذف شود؟", "Delete?")) && run(`/api/templates/${x.id}`, J("DELETE"))}>{t("حذف", "Delete")}</Button>} /></Td></Tr>)}</Tbody></Table></Box>
   </Box>;
 }
 
@@ -421,8 +433,8 @@ function GroupsBox({ c }: { c: Ctx }) {
   return <Box mt={8}>
     <HStack justify="space-between" mb={1}><Heading size="sm">{t("دسته‌بندی‌ها", "Groups")}</Heading><Button size="sm" colorScheme="blue" onClick={() => setF({ id: null, name: "", members: [] })}>{t("دسته جدید", "New group")}</Button></HStack>
     <Text fontSize="sm" className="muted" mb={3}>{t("چند کانفیگ/اینباند را در یک دسته بگذارید؛ با هر آپدیت اشتراک فقط یکی از آن‌ها به کاربر نشان داده می‌شود. دسته را در تب سرویس‌ها به سرویس وصل کنید.", "Put several configs/inbounds in one group; each subscription update shows only one of them. Attach groups to a service in the Services tab.")}</Text>
-    {(g.data || []).map((x: any) => <HStack key={x.id} mb={1} justify="space-between"><Text><b>{x.name}</b> <span className="muted">({(x.members || []).length})</span></Text>
-      <HStack className="act-grp" spacing={0}><Button size="sm" onClick={() => setF(x)}>{t("ویرایش", "Edit")}</Button><Button size="sm" colorScheme="red" variant="outline" onClick={() => { setGm(""); setGd(x); }}>{t("حذف", "Delete")}</Button></HStack></HStack>)}
+    {(g.data || []).map((x: any) => <HStack key={x.id} mb={2} justify="space-between" flexWrap="wrap"><Text><b>{x.name}</b> <span className="muted">({(x.members || []).length})</span></Text>
+      <HStack spacing={2}><Button size="sm" colorScheme="blue" onClick={() => setF(x)}>{t("ویرایش", "Edit")}</Button><Button size="sm" colorScheme="red" variant="outline" onClick={() => { setGm(""); setGd(x); }}>{t("حذف", "Delete")}</Button></HStack></HStack>)}
     <Modal isOpen={!!gd} onClose={() => setGd(null)} isCentered><ModalOverlay /><ModalContent><ModalHeader>{t("حذف دسته", "Delete group")} {gd?.name}</ModalHeader><ModalCloseButton /><ModalBody pb={5}>
       <Text fontSize="sm" mb={3}>{(gd?.service_ids || []).length > 0 ? t(`${gd.service_ids.length} سرویس به این دسته وصل است؛ به کدام دسته منتقل شوند؟`, `${gd.service_ids.length} services use this group; move them to which group?`) : t("سرویسی به این دسته وصل نیست.", "No service uses this group.")}</Text>
       {(gd?.service_ids || []).length > 0 && <Select placeholder={t("بدون انتقال (فقط جدا شود)", "No move (just detach)")} value={gm} onChange={e => setGm(e.target.value)}>{(g.data || []).filter((y: any) => y.id !== gd?.id).map((y: any) => <option key={y.id} value={y.id}>{y.name}</option>)}</Select>}
