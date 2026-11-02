@@ -28,28 +28,51 @@ _SUNSET_D = {"bg": "#1f0f0a", "card": "#2b1710", "soft": "#3a1f14", "bd": "#5a30
 THEMES = {
     "classic": {"label": "کلاسیک", "css": ""},
     # Neo-brutalist: thick black outlines, hard offset shadows, flat pop colors, tilted tags.
+    # Layout: 2-column board; usage shown as tall vertical meter columns; links + details side by side.
     "aurora": {"label": "نئوبروتال", "css": _theme("aurora", _BRUT, _BRUT_D,
         "@{background-color:var(--bg);background-image:radial-gradient(color-mix(in srgb,var(--fg) 22%,transparent) 1.2px,transparent 1.2px);background-size:18px 18px}"
-        "@ .wrap{max-width:720px}@ .brand{display:inline-block;background:var(--fg);color:var(--bg);padding:2px 12px;transform:rotate(1.5deg)}"
+        "@ .wrap{max-width:980px;display:grid;grid-template-columns:1fr 1fr;gap:0 22px;align-items:start}"
+        "@ .wrap>.top,@ .wrap>.alert{grid-column:1/-1}@ .wrap>.foot{grid-column:1/-1;order:9}"
+        "@ .card:nth-of-type(1){grid-column:1/-1;order:1}@ .card:nth-of-type(3){order:2}@ .card:nth-of-type(2){order:3}"
+        "@ .card:nth-of-type(4){grid-column:1/-1;order:4}@ .card:nth-of-type(5){grid-column:1/-1;order:5}"
+        "@ .ring{display:none}@ .hero{flex-wrap:nowrap}@ .vcol{display:flex;gap:14px;height:200px;flex:none}"
+        "@ .vc{position:relative;width:74px;height:100%;border:3px solid var(--bd);background:var(--card);box-shadow:4px 4px 0 var(--bd)}"
+        "@ .vc i{position:absolute;inset-inline:0;bottom:0;height:var(--p);border-top:3px solid var(--bd)}"
+        "@ .vc em{position:absolute;top:0;inset-inline:0;text-align:center;font-style:normal;font-size:11px;font-weight:800;line-height:1.4;background:var(--card);color:var(--fg);border-bottom:3px solid var(--bd);z-index:1}"
+        "@ .brand{display:inline-block;background:var(--fg);color:var(--bg);padding:2px 12px;transform:rotate(1.5deg)}"
         "@ .card{margin-top:34px;border:3px solid var(--bd);border-radius:0;box-shadow:var(--sh)}"
         "@ .card h2{display:inline-block;background:var(--ac);color:#fff;border:3px solid var(--bd);padding:2px 12px;margin:-36px 0 16px;transform:rotate(-1.5deg)}"
-        "@ .ring circle{stroke-width:14;stroke-linecap:butt}"
         "@ .stat{border:3px solid var(--bd);border-radius:0;box-shadow:3px 3px 0 var(--bd);color:#111}@ .stat:nth-child(odd){background:#a0e7ff}@ .stat:nth-child(even){background:#ffe45e}@ .stat .k{color:#333}"
         "@ .btn{border:3px solid var(--bd);border-radius:0;box-shadow:3px 3px 0 var(--bd);font-weight:800}@ .btn:active{transform:translate(3px,3px);box-shadow:none}@ .btn.pri{background:var(--ac);color:#fff}@ .btn.app{background:#a0e7ff;color:#111}"
         "@ .cfg,@ .sublink code{border:3px solid var(--bd);border-radius:0}@ .qr,@ .chip,@ .badge,@ .alert,@ .toast{border-radius:0}"
+        "@ .cfgs{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}"
         "@ .badge{border:2px solid var(--bd);color:#111!important;background:#b8f2c9!important}@ .badge.bad{background:#ffb3b3!important}@ .badge.warn{background:#ffe45e!important}@ .badge.mute{background:#ddd!important}"
         "@ .alert{border:3px solid var(--bd);background:#ffe45e;color:#111}@ .alert.bad{background:#ffb3b3}"
-        "@ .bar{height:14px;border:3px solid var(--bd);border-radius:0;background:var(--card)}@ .bar i{border-radius:0}@ .kv{border-bottom:2px solid var(--bd)}")},
+        "@ .bar{height:14px;border:3px solid var(--bd);border-radius:0;background:var(--card)}@ .bar i{border-radius:0}@ .kv{border-bottom:2px solid var(--bd)}"
+        "@media(max-width:760px){@ .wrap{display:block}@ .hero{flex-wrap:wrap}@ .vcol{height:150px;margin:0 auto}}")},
     # Terminal: console windows, monospace, green-on-black, square corners.
+    # Layout: status header with horizontal segmented meters, then link + configs full width, details/guide as split panes.
     "midnight": {"label": "ترمینال", "css": _theme("midnight", _TERM, _TERM,
         "@{background:repeating-linear-gradient(0deg,rgba(57,255,136,.035) 0 1px,transparent 1px 3px),var(--bg);color-scheme:dark;font-family:ui-monospace,Consolas,Menlo,Vazirmatn,monospace}"
-        "@ .wrap{max-width:780px}@ .brand{direction:ltr;font-family:ui-monospace,Consolas,monospace}@ .brand::before{content:'root@sub:~# ';color:var(--ac)}"
+        "@ .wrap{max-width:940px;display:grid;grid-template-columns:1fr 1fr;gap:0 16px;align-items:start}"
+        "@ .wrap>.top,@ .wrap>.alert{grid-column:1/-1}@ .wrap>.foot{grid-column:1/-1;order:9}"
+        "@ .card:nth-of-type(1){grid-column:1/-1;order:1}@ .card:nth-of-type(3){grid-column:1/-1;order:2}@ .card:nth-of-type(4){grid-column:1/-1;order:3}"
+        "@ .card:nth-of-type(2){order:4}@ .card:nth-of-type(5){order:5}"
+        "@ .ring{display:none}@ .hero{flex-wrap:nowrap;gap:22px}@ .vcol{display:flex;flex-direction:column;gap:10px;width:300px;flex:none;order:2}"
+        "@ .vc{position:relative;height:24px;border:1px solid var(--bd)}"
+        "@ .vc i{position:absolute;top:0;bottom:0;inset-inline-start:0;width:var(--p);background-color:transparent}"
+        "@ .vc i.ok{background-image:repeating-linear-gradient(90deg,var(--ok) 0 9px,transparent 9px 11px)}"
+        "@ .vc i.warn{background-image:repeating-linear-gradient(90deg,var(--warn) 0 9px,transparent 9px 11px)}"
+        "@ .vc i.bad{background-image:repeating-linear-gradient(90deg,var(--bad) 0 9px,transparent 9px 11px)}"
+        "@ .vc em{position:relative;z-index:1;font-style:normal;font-size:11px;padding:0 8px;line-height:22px;color:var(--fg);text-shadow:0 0 3px var(--bg),0 0 3px var(--bg),0 0 3px var(--bg)}"
+        "@ .brand{direction:ltr;font-family:ui-monospace,Consolas,monospace}@ .brand::before{content:'root@sub:~# ';color:var(--ac)}"
         "@ .card{border-radius:0;border:1px solid var(--bd);padding:0 18px 18px;overflow:hidden;box-shadow:0 0 0 1px rgba(57,255,136,.08)}"
         "@ .card::before{content:'● ● ●  bash';display:block;direction:ltr;text-align:left;margin:0 -18px 16px;padding:6px 14px;background:var(--soft);border-bottom:1px solid var(--bd);color:var(--ac);font-size:11px;letter-spacing:3px}"
         "@ .card h2{color:var(--ac);font-size:14px}@ .card h2::before{content:'$ ';direction:ltr}"
-        "@ .ring circle{stroke-width:6;stroke-linecap:butt}@ .uname,@ .stat .v,@ .ring .mid b{font-family:ui-monospace,Consolas,monospace}@ .uname::before{content:'> ';color:var(--ac)}"
+        "@ .uname,@ .stat .v,@ .ring .mid b{font-family:ui-monospace,Consolas,monospace}@ .uname::before{content:'> ';color:var(--ac)}"
         "@ .stat,@ .cfg,@ .sublink code,@ .qr,@ .chip,@ .badge,@ .alert,@ .bar,@ .bar i,@ .toast{border-radius:0}@ .stat{background:transparent;border:1px dashed var(--bd)}@ .badge{border:1px solid currentColor}"
-            "@ .btn{border-radius:0;background:transparent;color:var(--ac);border-color:var(--ac)}@ .btn.pri{background:var(--ac);color:#021208}")},
+        "@ .btn{border-radius:0;background:transparent;color:var(--ac);border-color:var(--ac)}@ .btn.pri{background:var(--ac);color:#021208}"
+        "@media(max-width:760px){@ .wrap{display:block}@ .hero{flex-wrap:wrap}@ .vcol{width:100%}}")},
     # Ticket / receipt: narrow centered strip, dashed tear lines, side notches, barcode footer.
     "paper": {"label": "بلیط", "css": _theme("paper", _TICKET, _TICKET_D,
         "@ .wrap{max-width:440px;padding-top:28px}@ .top{justify-content:center;gap:16px}"
