@@ -1,4 +1,7 @@
-"""Subscription-page templates. 'classic' is the built-in look; the others are CSS-only overrides (no external assets)."""
+"""Subscription-page templates. 'classic' is the built-in look; the others are CSS overrides (no external assets).
+
+Every template may also declare a structural 'layout' (rendered by page.py): 'default', 'cols' or 'side'.
+"""
 import re
 from app.db.models import Admin, Setting
 
@@ -27,8 +30,8 @@ _SUNSET_D = {"bg": "#1f0f0a", "card": "#2b1710", "soft": "#3a1f14", "bd": "#5a30
 
 THEMES = {
     "classic": {"label": "کلاسیک", "css": ""},
-    # Neo-brutalist: thick black outlines, hard offset shadows, flat pop colors, tilted tags.
-    "aurora": {"label": "نئوبروتال", "css": _theme("aurora", _BRUT, _BRUT_D,
+    # Neo-brutalist look + 'cols' layout: usage as chunky vertical columns, configs before the link.
+    "aurora": {"label": "نئوبروتال", "layout": "cols", "css": _theme("aurora", _BRUT, _BRUT_D,
         "@{background-color:var(--bg);background-image:radial-gradient(color-mix(in srgb,var(--fg) 22%,transparent) 1.2px,transparent 1.2px);background-size:18px 18px}"
         "@ .wrap{max-width:720px}@ .brand{display:inline-block;background:var(--fg);color:var(--bg);padding:2px 12px;transform:rotate(1.5deg)}"
         "@ .card{margin-top:34px;border:3px solid var(--bd);border-radius:0;box-shadow:var(--sh)}"
@@ -39,17 +42,22 @@ THEMES = {
         "@ .cfg,@ .sublink code{border:3px solid var(--bd);border-radius:0}@ .qr,@ .chip,@ .badge,@ .alert,@ .toast{border-radius:0}"
         "@ .badge{border:2px solid var(--bd);color:#111!important;background:#b8f2c9!important}@ .badge.bad{background:#ffb3b3!important}@ .badge.warn{background:#ffe45e!important}@ .badge.mute{background:#ddd!important}"
         "@ .alert{border:3px solid var(--bd);background:#ffe45e;color:#111}@ .alert.bad{background:#ffb3b3}"
-        "@ .bar{height:14px;border:3px solid var(--bd);border-radius:0;background:var(--card)}@ .bar i{border-radius:0}@ .kv{border-bottom:2px solid var(--bd)}")},
-    # Terminal: console windows, monospace, green-on-black, square corners.
-    "midnight": {"label": "ترمینال", "css": _theme("midnight", _TERM, _TERM,
+        "@ .bar{height:14px;border:3px solid var(--bd);border-radius:0;background:var(--card)}@ .bar i{border-radius:0}@ .kv{border-bottom:2px solid var(--bd)}"
+        "@ .idc .uname{background:#ffe45e;color:#111;padding:0 12px;border:3px solid var(--bd);box-shadow:3px 3px 0 var(--bd);transform:rotate(-1deg)}@ .idmeta{font-weight:800;color:var(--fg)}"
+        "@ .col-track{background:var(--card);border:3px solid var(--bd);border-radius:0;box-shadow:4px 4px 0 var(--bd)}@ .col-track i{border-radius:0}"
+        "@ .col b{display:inline-block;background:var(--fg);color:var(--bg);padding:0 10px;margin-top:12px;transform:rotate(-1deg)}@ .cols-sum{font-weight:800;color:var(--fg)}")},
+    # Terminal look + 'side' layout: sticky console sidebar (identity, QR, apps) + main column with segmented usage rows.
+    "midnight": {"label": "ترمینال", "layout": "side", "css": _theme("midnight", _TERM, _TERM,
         "@{background:repeating-linear-gradient(0deg,rgba(57,255,136,.035) 0 1px,transparent 1px 3px),var(--bg);color-scheme:dark;font-family:ui-monospace,Consolas,Menlo,Vazirmatn,monospace}"
-        "@ .wrap{max-width:780px}@ .brand{direction:ltr;font-family:ui-monospace,Consolas,monospace}@ .brand::before{content:'root@sub:~# ';color:var(--ac)}"
+        "@ .brand{direction:ltr;font-family:ui-monospace,Consolas,monospace}@ .brand::before{content:'root@sub:~# ';color:var(--ac)}@ .side .brand::before{display:block}"
         "@ .card{border-radius:0;border:1px solid var(--bd);padding:0 18px 18px;overflow:hidden;box-shadow:0 0 0 1px rgba(57,255,136,.08)}"
         "@ .card::before{content:'● ● ●  bash';display:block;direction:ltr;text-align:left;margin:0 -18px 16px;padding:6px 14px;background:var(--soft);border-bottom:1px solid var(--bd);color:var(--ac);font-size:11px;letter-spacing:3px}"
         "@ .card h2{color:var(--ac);font-size:14px}@ .card h2::before{content:'$ ';direction:ltr}"
         "@ .ring circle{stroke-width:6;stroke-linecap:butt}@ .uname,@ .stat .v,@ .ring .mid b{font-family:ui-monospace,Consolas,monospace}@ .uname::before{content:'> ';color:var(--ac)}"
         "@ .stat,@ .cfg,@ .sublink code,@ .qr,@ .chip,@ .badge,@ .alert,@ .bar,@ .bar i,@ .toast{border-radius:0}@ .stat{background:transparent;border:1px dashed var(--bd)}@ .badge{border:1px solid currentColor}"
-            "@ .btn{border-radius:0;background:transparent;color:var(--ac);border-color:var(--ac)}@ .btn.pri{background:var(--ac);color:#021208}")},
+        "@ .btn{border-radius:0;background:transparent;color:var(--ac);border-color:var(--ac)}@ .btn.pri{background:var(--ac);color:#021208}"
+        "@ .prow .bar{height:14px;border:1px solid var(--bd);background:transparent}"
+        "@ .prow .bar i{-webkit-mask:repeating-linear-gradient(90deg,#000 0 8px,transparent 8px 10px);mask:repeating-linear-gradient(90deg,#000 0 8px,transparent 8px 10px)}")},
     # Ticket / receipt: narrow centered strip, dashed tear lines, side notches, barcode footer.
     "paper": {"label": "بلیط", "css": _theme("paper", _TICKET, _TICKET_D,
         "@ .wrap{max-width:440px;padding-top:28px}@ .top{justify-content:center;gap:16px}"
