@@ -26,3 +26,10 @@ def test_all_templates_render_with_usage_cols():
     for tid in THEMES:
         html = _render(template=tid)
         assert f'class="t-{tid}"' in html and 'class="vcol"' in html
+
+
+def test_numbers_use_english_digits():
+    html = _render(used=900 * 1024 ** 2, limit=1024 ** 3, now=1_999_000_000)
+    body = html.split("<body", 1)[1]
+    assert not any(ch in body for ch in "۰۱۲۳۴۵۶۷۸۹٪٫")
+    assert "88%" in body and "fa-IR-u-ca-persian-nu-latn" in body
