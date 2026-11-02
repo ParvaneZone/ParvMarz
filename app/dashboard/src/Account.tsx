@@ -1,6 +1,6 @@
 import React from "react";
 import { copyText } from "./copy";
-import { Box, Heading, Text, SimpleGrid, Button, HStack, VStack, Input, Badge, Progress, Image, Slider, SliderTrack, SliderFilledTrack, SliderThumb, FormControl, FormLabel, Alert, AlertIcon, Code, Wrap } from "@chakra-ui/react";
+import { Box, Heading, Text, SimpleGrid, Button, HStack, VStack, Input, Badge, Progress, Image, Slider, SliderTrack, SliderFilledTrack, SliderThumb, FormControl, FormLabel, Alert, AlertIcon, Code, Wrap, Collapse, useDisclosure } from "@chakra-ui/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import QRCode from "qrcode";
 import type { Ctx } from "./Manage";
@@ -21,36 +21,49 @@ function ColorPalette({ value, fallback, onChange, swatches, c }: { value: strin
   const [txt, setTxt] = React.useState(cur);
   React.useEffect(() => setTxt(cur), [cur]);
   const hsl = (nh: number, ns: number, nl: number) => onChange(hslToHex(nh, ns, nl));
-  const track = (bg: string) => ({ background: bg, height: "10px", borderRadius: "6px" });
+  const track = (bg: string) => ({ background: bg, height: "12px", borderRadius: "6px" });
   return <Box>
-    <HStack spacing={3} mb={3} align="center">
+    <HStack spacing={3} mb={4} align="center">
       <Input type="color" w="56px" h="44px" p="2px" aria-label="color" value={cur} onChange={e => onChange(e.target.value.toLowerCase())} />
-      <Input className="ltr" maxW="130px" value={txt} placeholder="#2563eb" onChange={e => { setTxt(e.target.value); const v = e.target.value.trim(); if (isHex(v)) onChange(v.toLowerCase()); }} />
+      <Input className="ltr" maxW="130px" h="44px" value={txt} placeholder="#2563eb" onChange={e => { setTxt(e.target.value); const v = e.target.value.trim(); if (isHex(v)) onChange(v.toLowerCase()); }} />
       <Box w="44px" h="44px" borderRadius="12px" borderWidth="1px" style={{ background: cur }} />
       {value && <Button size="sm" variant="outline" onClick={() => onChange(null)}>{t("پیش‌فرض", "Default")}</Button>}
     </HStack>
     {([[t("رنگ (Hue)", "Hue"), h, 360, (v: number) => hsl(v, s || 60, l || 50), "linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)"],
       [t("اشباع", "Saturation"), s, 100, (v: number) => hsl(h, v, l), `linear-gradient(90deg,${hslToHex(h, 0, l)},${hslToHex(h, 100, l)})`],
       [t("روشنایی", "Lightness"), l, 100, (v: number) => hsl(h, s, v), `linear-gradient(90deg,#000,${hslToHex(h, s, 50)},#fff)`]] as [string, number, number, (v: number) => void, string][]).map(([label, v, max, set, grad]) =>
-      <FormControl key={label} mb={2}><FormLabel fontSize="sm" mb={1}>{label}</FormLabel>
-        <Box dir="ltr" px={2}><Slider min={0} max={max} value={v} onChange={set} aria-label={label}><SliderTrack sx={track(grad)}><SliderFilledTrack bg="transparent" /></SliderTrack><SliderThumb boxSize={5} borderWidth="2px" /></Slider></Box></FormControl>)}
-    <Wrap mt={2} spacing={2}>{swatches.map(sw => <Box as="button" key={sw} type="button" aria-label={sw} onClick={() => onChange(sw)} w="30px" h="30px" borderRadius="full" borderWidth={cur.toLowerCase() === sw ? "3px" : "1px"} style={{ background: sw }} />)}</Wrap>
+      <FormControl key={label} mb={3}><FormLabel fontSize="sm" mb={2}>{label}</FormLabel>
+        <Box dir="ltr" px={3} py={1}><Slider min={0} max={max} value={v} onChange={set} aria-label={label}><SliderTrack sx={track(grad)}><SliderFilledTrack bg="transparent" /></SliderTrack><SliderThumb boxSize={6} borderWidth="2px" /></Slider></Box></FormControl>)}
+    <Wrap mt={3} spacing={3}>{swatches.map(sw => <Box as="button" key={sw} type="button" aria-label={sw} onClick={() => onChange(sw)} w="36px" h="36px" borderRadius="full" borderWidth={cur.toLowerCase() === sw ? "3px" : "1px"} style={{ background: sw }} />)}</Wrap>
   </Box>;
 }
 
 export function AppearanceCard({ c, prefs, setPrefs }: { c: Ctx; prefs: Prefs; setPrefs: (p: Prefs) => void }) {
   const { t } = c; const modes: [Mode, string][] = [["light", t("روشن", "Light")], ["dark", t("تیره", "Dark")], ["oled", "OLED"]];
+  const { isOpen, onToggle } = useDisclosure();
+  const bgFallback = prefs.theme === "light" ? "#f3f5f9" : prefs.theme === "dark" ? "#0f172a" : "#000000";
   return <Box className="panel" mb={4}>
-    <HStack justify="space-between" mb={1} flexWrap="wrap"><Heading size="md">{t("ظاهر و رنگ‌ها", "Appearance & colors")}</Heading>
-      <Button size="sm" variant="outline" onClick={() => setPrefs({ ...DEFAULT_PREFS, lang: prefs.lang })}>{t("بازگشت به رنگ‌های پیش‌فرض", "Reset colors")}</Button></HStack>
-    <Text className="muted" fontSize="sm" mb={4}>{t("تغییرات فوری اعمال و برای همین حساب ذخیره می‌شود؛ با رفرش و خروج/ورود پاک نمی‌شود.", "Applied instantly and saved to your account; it survives refresh and sign-out/in.")}</Text>
-    <HStack mb={4} spacing={2}>{modes.map(([m, label]) => <Button key={m} size="sm" variant={prefs.theme === m ? "solid" : "outline"} colorScheme="blue" onClick={() => setPrefs({ ...prefs, theme: m })}>{label}</Button>)}</HStack>
-    <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
-      <Box><Text fontWeight={700} mb={2}>{t("رنگ اصلی (دکمه‌ها و تأکیدها)", "Accent color (buttons & highlights)")}</Text>
-        <ColorPalette c={c} value={prefs.accent} fallback="#3182ce" swatches={SWATCHES} onChange={v => setPrefs({ ...prefs, accent: v })} /></Box>
-      <Box><Text fontWeight={700} mb={2}>{t("رنگ پس‌زمینه (بقیه رنگ‌ها خودکار هماهنگ می‌شوند)", "Background (other colors adapt automatically)")}</Text>
-        <ColorPalette c={c} value={prefs.bg} fallback={prefs.theme === "light" ? "#f3f5f9" : prefs.theme === "dark" ? "#0f172a" : "#000000"} swatches={BG_SWATCHES} onChange={v => setPrefs({ ...prefs, bg: v })} /></Box>
-    </SimpleGrid>
+    <Box as="button" type="button" w="100%" minH="56px" display="flex" alignItems="center" justifyContent="space-between" gap={3} textAlign="start" onClick={onToggle} aria-expanded={isOpen}>
+      <Box><Heading size="md">{t("ظاهر و رنگ‌ها", "Appearance & colors")}</Heading>
+        <Text className="muted" fontSize="sm">{isOpen ? t("تغییرات فوری اعمال و برای همین حساب ذخیره می‌شود.", "Applied instantly and saved to your account.") : t("برای تغییر تم و رنگ ضربه بزنید", "Tap to change theme & colors")}</Text></Box>
+      <HStack spacing={2} flex="none">
+        <Box w="22px" h="22px" borderRadius="full" borderWidth="1px" style={{ background: prefs.accent || "#3182ce" }} />
+        <Box w="22px" h="22px" borderRadius="full" borderWidth="1px" style={{ background: prefs.bg || bgFallback }} />
+        <Text fontSize="xl" lineHeight="1" style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</Text>
+      </HStack>
+    </Box>
+    <Collapse in={isOpen} animateOpacity>
+      <Box pt={4}>
+        <SimpleGrid columns={3} spacing={2} mb={5}>{modes.map(([m, label]) => <Button key={m} h="44px" variant={prefs.theme === m ? "solid" : "outline"} colorScheme="blue" onClick={() => setPrefs({ ...prefs, theme: m })}>{label}</Button>)}</SimpleGrid>
+        <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+          <Box className="stat" p={4}><Text fontWeight={700} mb={3}>{t("رنگ اصلی (دکمه‌ها و تأکیدها)", "Accent color (buttons & highlights)")}</Text>
+            <ColorPalette c={c} value={prefs.accent} fallback="#3182ce" swatches={SWATCHES} onChange={v => setPrefs({ ...prefs, accent: v })} /></Box>
+          <Box className="stat" p={4}><Text fontWeight={700} mb={3}>{t("رنگ پس‌زمینه (بقیه رنگ‌ها خودکار هماهنگ می‌شوند)", "Background (other colors adapt automatically)")}</Text>
+            <ColorPalette c={c} value={prefs.bg} fallback={bgFallback} swatches={BG_SWATCHES} onChange={v => setPrefs({ ...prefs, bg: v })} /></Box>
+        </SimpleGrid>
+        <Button mt={4} w={{ base: "100%", md: "auto" }} variant="outline" onClick={() => setPrefs({ ...DEFAULT_PREFS, lang: prefs.lang })}>{t("بازگشت به رنگ‌های پیش‌فرض", "Reset colors")}</Button>
+      </Box>
+    </Collapse>
   </Box>;
 }
 
