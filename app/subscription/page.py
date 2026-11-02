@@ -73,6 +73,21 @@ def _link_card(p: dict) -> str:
     )
 
 
+def _usage_cols(pct: float, limit: int | None, time_pct: float | None) -> str:
+    """Usage as three meters (used / remaining / time elapsed); only templates that want columns show them."""
+    rem = 100.0 if not limit else max(0.0, 100.0 - pct)
+    t = time_pct or 0.0
+
+    def one(label: str, p: float, tone: str) -> str:
+        return f'<div class="vc" style="--p:{p:.0f}%"><i class="{tone}"></i><em>{label} {fa(f"{p:.0f}")}٪</em></div>'
+
+    used_tone = "bad" if pct >= 90 else "warn" if pct >= 70 else "ok"
+    rem_tone = "bad" if rem <= 10 else "warn" if rem <= 30 else "ok"
+    time_tone = "bad" if t >= 90 else "warn" if t >= 70 else "ok"
+    return ('<div class="vcol" aria-hidden="true">' + one("مصرف", pct, used_tone) + one("باقی", rem, rem_tone)
+            + one("زمان", t, time_tone) + "</div>")
+
+
 def render_subscription_page(*, nonce: str, brand: str, username: str, state: str, used: int, limit: int | None,
                              expire: int, created: int, now: int, online_at: int | None, service: str,
                              reset: str, on_hold_days: int | None, links: list[dict], sub_url: str,
@@ -88,6 +103,7 @@ def render_subscription_page(*, nonce: str, brand: str, username: str, state: st
     ring_c = 2 * math.pi * 52
     ring_off = ring_c * (1 - pct / 100.0)
     ring_tone = "bad" if pct >= 90 else "warn" if pct >= 70 else "ok"
+    usage_cols = _usage_cols(pct, limit, time_pct)
 
     alerts = []
     if state == "expired":
@@ -161,6 +177,7 @@ body{{margin:0;background:var(--bg);color:var(--fg);font:15px/1.8 Vazirmatn,Taho
 .ring .tr{{stroke:var(--soft)}}.ring .pg.ok{{stroke:var(--ok)}}.ring .pg.warn{{stroke:var(--warn)}}.ring .pg.bad{{stroke:var(--bad)}}
 .ring .mid{{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.3}}
 .ring .mid b{{font-size:26px}}.ring .mid span{{font-size:12px;color:var(--mu)}}
+.vcol{{display:none}}.vc i.ok{{background:var(--ok)}}.vc i.warn{{background:var(--warn)}}.vc i.bad{{background:var(--bad)}}
 .hero-info{{flex:1;min-width:220px}}
 .uname{{font-size:22px;font-weight:800;word-break:break-all;direction:ltr;text-align:right}}
 .badge{{display:inline-block;padding:2px 12px;border-radius:99px;font-size:13px;font-weight:700;margin-top:4px}}
@@ -202,6 +219,7 @@ ol.steps{{margin:0;padding:0 20px 0 0;color:var(--mu)}}ol.steps li{{margin-botto
   <div class="hero">
    <div class="ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="tr" cx="60" cy="60" r="52"/><circle class="pg {ring_tone}" cx="60" cy="60" r="52" stroke-dasharray="{ring_c:.2f}" stroke-dashoffset="{ring_off:.2f}"/></svg>
     <div class="mid"><b>{fa(f"{pct:.0f}") + "٪" if limit else "∞"}</b><span>{"مصرف‌شده" if limit else "حجم نامحدود"}</span></div></div>
+   {usage_cols}
    <div class="hero-info"><div class="uname">{e(username)}</div><span class="badge {tone}">{e(label)}</span>
     {time_bar}
     <div class="grid">
