@@ -1,23 +1,34 @@
 """Subscription link tokens.
 
-New (compact) format: base64url( user_id[4] | version[4] | HMAC-SHA256(...)[:12] ) -> 27 URL-safe chars.
- - no username / personal data inside the link
- - no '.' or other characters some apps choke on
- - short enough for every client (v2rayNG, Hiddify, Streisand, Shadowrocket, ...)
- - revoking (bumping sub_token_version) still kills the old link instantly
+Current format: a random per-user UUID (``users.sub_uuid``) used directly as the link path: ``/sub/<uuid>``.
+ - nothing about the user can be derived from the link
+ - rotated on revoke / owner change, so the old link dies instantly
 
-Legacy format (``<base64 json>.<sig>``) is still verified so links already handed out keep working
-until the owner revokes them.
+Older formats keep working until the owner revokes them:
+
+Compact token: base64url( user_id[4] | version[4] | HMAC-SHA256(...)[:12] ) -> 27 URL-safe chars.
+Legacy token (``<base64 json>.<sig>``).
 """
 import base64
 import hashlib
 import hmac
 import json
+import re
 import struct
+import uuid
 from app.config import settings
 
 _MAC_LEN = 12
 _TAG = b"sub2"
+_UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
+def new_sub_uuid() -> str:
+    return str(uuid.uuid4())
+
+
+def is_sub_uuid(value: str) -> bool:
+    return bool(_UUID_RE.fullmatch(value.lower()))
 
 
 def _key() -> bytes:
@@ -44,7 +55,7 @@ def _issue_legacy(username: str, created_at: int, version: int) -> str:
 
 
 def issue_subscription_token(username: str, created_at: int, version: int, user_id: int | None = None) -> str:
-    """With ``user_id`` -> compact token (preferred). Without -> legacy token (kept for old callers/tests)."""
+    """With ``user_id`` -> compact token (fallback for users without ``sub_uuid``). Without -> legacy token (kept for old callers/tests)."""
     if user_id is None:
         return _issue_legacy(username, created_at, version)
     payload = struct.pack(">II", user_id, version)
