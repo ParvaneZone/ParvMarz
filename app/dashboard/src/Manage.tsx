@@ -3,6 +3,7 @@ import { Box, Heading, Text, Table, Thead, Tbody, Tr, Th, Td, Badge, Button, HSt
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
+import { useConfirm, RechargeModal } from "./ConfirmModal";
 
 export type Ctx = { api: (p: string, i?: RequestInit) => Promise<any>; t: (fa: string, en: string) => string; toast: (o: any) => void };
 const GB = 1024 ** 3;
@@ -39,7 +40,7 @@ const hideSm = { base: "none", md: "table-cell" } as const;
 
 /* ---------------- Panels ---------------- */
 export function PanelsTab(c: Ctx) {
-  const { api, t } = c; const run = useRun(c, ["panels"]);
+  const { api, t } = c; const run = useRun(c, ["panels"]); const [ask, confirmNode] = useConfirm(t);
   const q = useQuery({ queryKey: ["panels"], queryFn: () => api("/api/panels") });
   const empty = { name: "", type: "marzban", base_url: "", username: "", password: "", verify_ssl: true, enabled: true, username_prefix: "", sync_interval: 60 };
   const [f, setF] = React.useState<any>(null); const [editId, setEditId] = React.useState<number | null>(null);
@@ -63,6 +64,7 @@ export function PanelsTab(c: Ctx) {
     if (id) { await api(`/api/panels/${id}/sync`, J("POST")).catch(() => {}); await Promise.all(["panels", "inbounds"].map(k => qc.invalidateQueries({ queryKey: [k] }))); }
   };
   return <Box className="panel">
+    {confirmNode}
     <HStack justify="space-between" mb={4}><Heading size="md">{t("پنل‌های بالادستی", "Upstream panels")}</Heading><Button size="md" colorScheme="blue" onClick={() => { setEditId(null); setF(empty); }}>{t("افزودن پنل", "Add panel")}</Button></HStack>
     {f && <Box className="create-form" mb={4}><SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
       <F label={t("نام", "Name")}><Input value={f.name} onChange={e => set("name", e.target.value)} /></F>
@@ -83,7 +85,7 @@ export function PanelsTab(c: Ctx) {
           <Button size="sm" leftIcon={<Icon name="refresh" size={14} />} onClick={() => run(`/api/panels/${p.id}/sync`, J("POST"))}>{t("همگام‌سازی", "Sync")}</Button>
           <Button size="sm" leftIcon={<Icon name="inbound" size={14} />} onClick={() => void pullInbounds(p, false)}>{t("اینباندها", "Inbounds")}</Button>
           <Button size="sm" onClick={() => { setEditId(p.id); setF({ ...empty, name: p.name, type: p.type, base_url: p.base_url, enabled: p.enabled }); }}>{t("ویرایش", "Edit")}</Button>
-          <Button size="sm" colorScheme="red" onClick={() => confirm(t("حذف شود؟", "Delete?")) && run(`/api/panels/${p.id}`, J("DELETE"))}>{t("حذف", "Delete")}</Button>
+          <Button size="sm" colorScheme="red" onClick={() => ask({ title: t("پنل حذف شود؟", "Delete panel?"), body: p.name, danger: true, confirmLabel: t("حذف", "Delete") }, () => void run(`/api/panels/${p.id}`, J("DELETE")))}>{t("حذف", "Delete")}</Button>
         </HStack></Td></Tr>)}</Tbody></Table></Box>
     <Modal isOpen={!!inb} onClose={() => setInb(null)} size="xl" isCentered><ModalOverlay /><ModalContent><ModalHeader>{t("اینباندهای پنل", "Panel inbounds")}{inb?.panel ? ` — ${inb.panel.name}` : ""}</ModalHeader><ModalCloseButton /><ModalBody pb={6} overflowX="auto">
       <HStack mb={3} justify="space-between"><Text fontSize="sm" className="muted">{t("فقط اینباندهای واقعی پنل (نه سرویس یا گروه).", "Real panel inbounds only (not services or groups).")}</Text>
@@ -176,7 +178,7 @@ export function ServicesTab(c: Ctx) {
 
 /* ---------------- Templates ---------------- */
 export function TemplatesTab(c: Ctx) {
-  const { api, t } = c; const run = useRun(c, ["templates"]);
+  const { api, t } = c; const run = useRun(c, ["templates"]); const [ask, confirmNode] = useConfirm(t);
   const q = useQuery({ queryKey: ["templates"], queryFn: () => api("/api/templates") });
   const sv = useQuery({ queryKey: ["services"], queryFn: () => api("/api/services") });
   const empty = { name: "", service_id: "", data_gb: "30", duration: "30", username_prefix: "", username_suffix: "", reset_strategy: "no_reset", add_remaining_traffic: false };
@@ -184,6 +186,7 @@ export function TemplatesTab(c: Ctx) {
   const set = (k: string, v: any) => setF({ ...f, [k]: v });
   const body = () => ({ name: f.name, service_id: Number(f.service_id), data_limit: f.data_gb === "" ? null : Math.round(Number(f.data_gb) * GB), duration: num(f.duration), username_prefix: f.username_prefix, username_suffix: f.username_suffix, reset_strategy: f.reset_strategy, add_remaining_traffic: f.add_remaining_traffic });
   return <Box className="panel">
+    {confirmNode}
     <HStack justify="space-between" mb={4}><Heading size="md">{t("قالب‌های کاربر", "User templates")}</Heading><Button size="md" colorScheme="blue" onClick={() => { setEditId(null); setF(empty); }}>{t("قالب جدید", "New template")}</Button></HStack>
     {f && <Box className="create-form" mb={4}><SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
       <F label={t("نام", "Name")}><Input value={f.name} onChange={e => set("name", e.target.value)} /></F>
@@ -198,7 +201,7 @@ export function TemplatesTab(c: Ctx) {
     <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("نام", "Name")}</Th><Th>{t("سرویس", "Service")}</Th><Th>{t("حجم", "Traffic")}</Th><Th display={hideSm}>{t("مدت", "Days")}</Th><Th /></Tr></Thead>
       <Tbody>{(q.data || []).map((x: any) => <Tr key={x.id}><Td>{x.name}</Td><Td>{(sv.data || []).find((s: any) => s.id === x.service_id)?.display_name ?? x.service_id}</Td><Td>{x.data_limit == null ? "∞" : (x.data_limit / GB).toFixed(1) + " GB"}</Td><Td display={hideSm}>{x.duration ?? "∞"}</Td>
         <Td><HStack className="act-grp" spacing={0}><Button size="sm" onClick={() => { setEditId(x.id); setF({ name: x.name, service_id: String(x.service_id), data_gb: x.data_limit == null ? "" : String(x.data_limit / GB), duration: x.duration == null ? "" : String(x.duration), username_prefix: x.username_prefix, username_suffix: x.username_suffix, reset_strategy: x.reset_strategy, add_remaining_traffic: x.add_remaining_traffic }); }}>{t("ویرایش", "Edit")}</Button>
-          <Button size="sm" colorScheme="red" onClick={() => confirm(t("حذف شود؟", "Delete?")) && run(`/api/templates/${x.id}`, J("DELETE"))}>{t("حذف", "Delete")}</Button></HStack></Td></Tr>)}</Tbody></Table></Box>
+          <Button size="sm" colorScheme="red" onClick={() => ask({ title: t("قالب حذف شود؟", "Delete template?"), body: x.name, danger: true, confirmLabel: t("حذف", "Delete") }, () => void run(`/api/templates/${x.id}`, J("DELETE")))}>{t("حذف", "Delete")}</Button></HStack></Td></Tr>)}</Tbody></Table></Box>
   </Box>;
 }
 
@@ -209,13 +212,13 @@ function Chips({ opts, onPick }: { opts: [string, string][]; onPick: (v: string)
   return <HStack mt={1} spacing={1} flexWrap="wrap">{opts.map(([l, v]) => <Button key={l} size="xs" variant="outline" onClick={() => onPick(v)}>{l}</Button>)}</HStack>;
 }
 export function AdminsTab(c: Ctx) {
-  const { api, t } = c; const run = useRun(c, ["admins"]);
+  const { api, t } = c; const run = useRun(c, ["admins"]); const [ask, confirmNode] = useConfirm(t);
   const q = useQuery({ queryKey: ["admins"], queryFn: () => api("/api/admins") });
   const cat = useQuery({ queryKey: ["perm-catalog"], queryFn: () => api("/api/admins/permissions") });
   const sv = useQuery({ queryKey: ["services"], queryFn: () => api("/api/services") });
   const empty = { username: "", password: "", role: "admin", max_users: "", max_total_gb: "", max_user_gb: "", max_user_days: "", expire: "", telegram_id: "", services: [] as number[], perms: {} as Record<string, boolean> };
   const [f, setF] = React.useState<any>(null); const [editId, setEditId] = React.useState<number | null>(null);
-  const [det, setDet] = React.useState<number | null>(null);
+  const [det, setDet] = React.useState<number | null>(null); const [rc, setRc] = React.useState<any>(null);
   const set = (k: string, v: any) => setF({ ...f, [k]: v });
   const [pw, setPw] = React.useState({ current_password: "", new_password: "" });
   const allKeys: string[] = (cat.data || []).flatMap((g: any) => g.items.map((i: any) => i.key));
@@ -240,13 +243,15 @@ export function AdminsTab(c: Ctx) {
         if (r?.warnings?.length) c.toast({ title: t("ادمین ساخته شد، ولی:", "Admin created, but:"), description: r.warnings.join("\n"), status: "warning", duration: 12000, isClosable: true });
       });
   const edit = (a: any) => { setEditId(a.id); setF({ ...empty, username: a.username, role: a.role, max_users: a.max_users ?? "", max_total_gb: toGB(a.max_total_traffic), max_user_gb: toGB(a.max_user_traffic), max_user_days: a.max_user_days ?? "", expire: a.expire ? a.expire.slice(0, 10) : "", telegram_id: a.telegram_id || "", services: a.allowed_services || [], perms: Object.keys(a.permissions || {}).length ? a.permissions : Object.fromEntries(allKeys.map(k => [k, true])) }); };
-  const recharge = (a: any) => { const d = prompt(t("روز شارج", "Days to add"), "30"); if (d === null) return; const g = prompt(t("حجم شارج (GB)", "GB to add"), "0"); if (g === null) return; const r = confirm(t("مصرف کاربران ریست شود؟", "Reset users' usage?")); void run(`/api/admins/${a.id}/recharge`, J("POST", { add_days: Number(d) || 0, add_traffic: Math.round((Number(g) || 0) * GB), reset_usage: r })); };
+  const doRecharge = (days: number, g: number, reset: boolean) => { const a = rc; setRc(null); if (a) void run(`/api/admins/${a.id}/recharge`, J("POST", { add_days: days || 0, add_traffic: Math.round((g || 0) * GB), reset_usage: reset })); };
   const isAdmin = f?.role === "admin";
   const da = (q.data || []).find((a: any) => a.id === det);
   const cap = (v: number | null | undefined) => (v == null ? "∞" : (v / GB).toFixed(0) + " GB");
   const D = (l: string, v: React.ReactNode) => <HStack key={l} justify="space-between" align="start"><Text className="muted">{l}</Text><Text className="ltr" textAlign="end">{v}</Text></HStack>;
   const stateLabel = (s: string) => ({ active: t("فعال", "on"), disabled: t("غیرفعال", "off"), expired: t("زمان تمام", "expired"), traffic_exhausted: t("حجم تمام", "no traffic") } as any)[s] ?? s;
   return <Box className="panel">
+    {confirmNode}
+    <RechargeModal name={rc ? rc.username : null} t={t} onSubmit={doRecharge} onClose={() => setRc(null)} />
     <HStack justify="space-between" mb={4}><Heading size="md">{t("ادمین‌ها", "Admins")}</Heading><Button size="md" colorScheme="blue" onClick={() => { setEditId(null); setF(empty); }}>{t("ادمین جدید", "New admin")}</Button></HStack>
     {f && <Box className="create-form" mb={4}>
       <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
@@ -292,12 +297,12 @@ export function AdminsTab(c: Ctx) {
         </SimpleGrid>
         {da.role !== "sudo" && <Button w="full" mb={3} colorScheme="blue" onClick={() => { edit(da); setDet(null); }}>{t("ویرایش دسترسی", "Edit access")}</Button>}
         <SimpleGrid columns={2} spacing={2}>
-          {da.role !== "sudo" && <Button variant="outline" onClick={() => recharge(da)}>{t("شارج", "Recharge")}</Button>}
+          {da.role !== "sudo" && <Button variant="outline" onClick={() => setRc(da)}>{t("شارج", "Recharge")}</Button>}
           <Button variant="outline" onClick={() => run(`/api/admins/${da.id}`, J("PATCH", { disabled: !da.disabled }))}>{da.disabled ? t("فعال‌سازی", "Enable") : t("غیرفعال", "Disable")}</Button>
           <Button variant="outline" onClick={() => run(`/api/admins/${da.id}/users-status`, J("POST", { status: "disabled" }))}>{t("غیرفعال‌کردن کاربران", "Disable users")}</Button>
           <Button variant="outline" onClick={() => run(`/api/admins/${da.id}/users-status`, J("POST", { status: "active" }))}>{t("فعال‌کردن کاربران", "Enable users")}</Button>
-          <Button variant="outline" onClick={() => confirm(t("مصرف کاربران صفر شود؟", "Reset usage?")) && run(`/api/admins/${da.id}/reset-usage`, J("POST"))}>{t("ریست مصرف", "Reset usage")}</Button>
-          {da.totp_enabled && <Button variant="outline" onClick={() => confirm(t("2FA این ادمین غیرفعال شود؟", "Disable this admin's 2FA?")) && run(`/api/admins/${da.id}/reset-2fa`, J("POST"))}>{t("ریست 2FA", "Reset 2FA")}</Button>}
+          <Button variant="outline" onClick={() => ask({ title: t("مصرف کاربران صفر شود؟", "Reset usage?"), body: da.username, danger: true, confirmLabel: t("ریست مصرف", "Reset usage") }, () => void run(`/api/admins/${da.id}/reset-usage`, J("POST")))}>{t("ریست مصرف", "Reset usage")}</Button>
+          {da.totp_enabled && <Button variant="outline" onClick={() => ask({ title: t("2FA این ادمین غیرفعال شود؟", "Disable this admin's 2FA?"), body: da.username, danger: true, confirmLabel: t("ریست 2FA", "Reset 2FA") }, () => void run(`/api/admins/${da.id}/reset-2fa`, J("POST")))}>{t("ریست 2FA", "Reset 2FA")}</Button>}
         </SimpleGrid></>}
     </ModalBody></ModalContent></Modal>
     <Heading size="sm" mt={6} mb={2}>{t("تغییر رمز من", "Change my password")}</Heading>
@@ -322,7 +327,7 @@ const SETTING_FIELDS: SField[] = [
   { key: "backup_keep", fa: "تعداد نسخه پشتیبان نگه‌داری‌شده", en: "Backups to keep", type: "number" },
 ];
 export function SystemTab(c: Ctx) {
-  const { api, t } = c; const run = useRun(c, ["settings"]);
+  const { api, t } = c; const run = useRun(c, ["settings"]); const [ask, confirmNode] = useConfirm(t);
   const st = useQuery({ queryKey: ["settings"], queryFn: () => api("/api/system/settings") });
   const au = useQuery({ queryKey: ["audit"], queryFn: () => api("/api/system/audit?limit=50") });
   const [v, setV] = React.useState<Record<string, any>>({}); const [exp, setExp] = React.useState<any>(null);
@@ -330,6 +335,7 @@ export function SystemTab(c: Ctx) {
   const known = SETTING_FIELDS.map(x => x.key); const extra = Object.keys(v).filter(k => !known.includes(k));
   const save = () => { const body: Record<string, any> = {}; Object.entries(v).forEach(([k, val]) => { if (val !== "" && val !== undefined) body[k] = val; }); void run("/api/system/settings", J("PUT", body)); };
   return <Box className="panel">
+    {confirmNode}
     <Heading size="md" mb={3}>{t("تنظیمات سیستم", "System settings")}</Heading>
     <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
       {SETTING_FIELDS.map(x => <F key={x.key} label={t(x.fa, x.en)}>
@@ -340,7 +346,7 @@ export function SystemTab(c: Ctx) {
     {extra.length > 0 && <Box mt={4}><Text fontSize="sm" className="muted" mb={2}>{t("سایر تنظیمات ذخیره‌شده", "Other stored settings")}</Text><SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>{extra.map(k => <F key={k} label={k}><HStack><Input className="ltr" value={typeof v[k] === "object" ? JSON.stringify(v[k]) : String(v[k] ?? "")} isReadOnly={typeof v[k] === "object"} onChange={e => setV({ ...v, [k]: e.target.value })} /></HStack></F>)}</SimpleGrid></Box>}
     <HStack mt={4} flexWrap="wrap"><Button colorScheme="blue" onClick={save}>{t("ذخیره تنظیمات", "Save settings")}</Button><Button onClick={() => run("/api/system/backup", J("POST"))}>{t("پشتیبان‌گیری", "Backup now")}</Button>
       <Button onClick={async () => setExp(await api("/api/users/expired").catch(() => null))}>{t("کاربران منقضی", "Expired users")}</Button>
-      {exp && exp.count > 0 && <Button colorScheme="red" onClick={() => confirm(t(`${exp.count} کاربر حذف شود؟`, `Delete ${exp.count} users?`)) && run("/api/users/expired?dry_run=false", J("DELETE"), () => setExp(null))}>{t("حذف منقضی‌ها", "Delete expired")} ({exp.count})</Button>}</HStack>
+      {exp && exp.count > 0 && <Button colorScheme="red" onClick={() => ask({ title: t(`${exp.count} کاربر حذف شود؟`, `Delete ${exp.count} users?`), danger: true, confirmLabel: t("حذف", "Delete") }, () => void run("/api/users/expired?dry_run=false", J("DELETE"), () => setExp(null)))}>{t("حذف منقضی‌ها", "Delete expired")} ({exp.count})</Button>}</HStack>
     {exp && <Text mt={2} fontSize="sm" className="ltr">{exp.count}: {exp.users.slice(0, 30).join(", ")}</Text>}
     <Heading size="md" mt={6} mb={3}>{t("لاگ عملیات", "Audit log")}</Heading>
     <Box className="tscroll" overflowX="auto" maxH="360px" overflowY="auto"><Table size="sm"><Thead><Tr><Th display={hideSm}>#</Th><Th display={hideSm}>Admin</Th><Th>Action</Th><Th>Object</Th><Th>{t("زمان", "Time")}</Th></Tr></Thead>
