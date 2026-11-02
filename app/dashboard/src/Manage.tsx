@@ -206,6 +206,10 @@ const fromGB = (v: string) => (v === "" ? null : Math.round(Number(v) * GB));
 function Chips({ opts, onPick }: { opts: [string, string][]; onPick: (v: string) => void }) {
   return <HStack mt={1} spacing={1} flexWrap="wrap">{opts.map(([l, v]) => <Button key={l} size="xs" variant="outline" onClick={() => onPick(v)}>{l}</Button>)}</HStack>;
 }
+function KV({ k, children }: { k: string; children: React.ReactNode }) {
+  return <HStack justify="space-between" align="flex-start" py={2} borderBottomWidth="1px" borderStyle="dashed" spacing={4}>
+    <Text className="muted" fontSize="sm" flexShrink={0}>{k}</Text><Text fontWeight={600} fontSize="sm" textAlign="end" wordBreak="break-word">{children}</Text></HStack>;
+}
 export function AdminsTab(c: Ctx) {
   const { api, t } = c; const run = useRun(c, ["admins"]);
   const q = useQuery({ queryKey: ["admins"], queryFn: () => api("/api/admins") });
@@ -213,11 +217,18 @@ export function AdminsTab(c: Ctx) {
   const sv = useQuery({ queryKey: ["services"], queryFn: () => api("/api/services") });
   const empty = { username: "", password: "", role: "admin", max_users: "", max_total_gb: "", max_user_gb: "", max_user_days: "", expire: "", telegram_id: "", services: [] as number[], perms: {} as Record<string, boolean> };
   const [f, setF] = React.useState<any>(null); const [editId, setEditId] = React.useState<number | null>(null);
+  const [openId, setOpenId] = React.useState<number | null>(null);
   const set = (k: string, v: any) => setF({ ...f, [k]: v });
   const [pw, setPw] = React.useState({ current_password: "", new_password: "" });
   const allKeys: string[] = (cat.data || []).flatMap((g: any) => g.items.map((i: any) => i.key));
   const allSv: number[] = (sv.data || []).map((s: any) => s.id);
   const toggle = (arr: any[], v: any, on: boolean) => (on ? [...arr, v] : arr.filter(x => x !== v));
+  const o = (q.data || []).find((x: any) => x.id === openId) || null;
+  const stLbl = (s: string) => ({ active: t("فعال", "on"), disabled: t("غیرفعال", "off"), expired: t("زمان تمام", "expired"), traffic_exhausted: t("حجم تمام", "no traffic") } as Record<string, string>)[s] ?? s;
+  const stTone = (s: string) => (s === "active" ? "green" : s === "disabled" ? "red" : "orange");
+  const svcNames = (a: any) => (a.role === "sudo" ? t("همه", "All") : (a.allowed_services || []).map((id: number) => (sv.data || []).find((s: any) => s.id === id)?.display_name ?? id).join("، ") || "—");
+  const usedPct = (a: any) => (a.max_total_traffic ? Math.min(100, (a.used_traffic / a.max_total_traffic) * 100) : 0);
+  const usageTxt = (a: any) => `${(a.used_traffic / GB).toFixed(1)} / ${a.max_total_traffic == null ? "∞" : (a.max_total_traffic / GB).toFixed(0)} GB`;
   const limits = () => ({ telegram_id: (f.telegram_id || "").trim() || null, max_users: num(f.max_users), max_total_traffic: fromGB(f.max_total_gb), max_user_traffic: fromGB(f.max_user_gb), max_user_days: num(f.max_user_days), expire: f.expire ? new Date(f.expire + "T23:59:59").toISOString() : null, allowed_services: f.services, permissions: Object.fromEntries(allKeys.map(k => [k, !!f.perms[k]])) });
   const check = (): string => {
     if ((f.telegram_id || "").trim() && !/^-?\d{5,20}$/.test(f.telegram_id.trim())) return t("آیدی عددی تلگرام فقط باید عدد باشد (مثلاً 123456789)", "Telegram ID must be numeric (e.g. 123456789)");
@@ -237,6 +248,8 @@ export function AdminsTab(c: Ctx) {
         if (r?.warnings?.length) c.toast({ title: t("ادمین ساخته شد، ولی:", "Admin created, but:"), description: r.warnings.join("\n"), status: "warning", duration: 12000, isClosable: true });
       });
   const edit = (a: any) => { setEditId(a.id); setF({ ...empty, username: a.username, role: a.role, max_users: a.max_users ?? "", max_total_gb: toGB(a.max_total_traffic), max_user_gb: toGB(a.max_user_traffic), max_user_days: a.max_user_days ?? "", expire: a.expire ? a.expire.slice(0, 10) : "", telegram_id: a.telegram_id || "", services: a.allowed_services || [], perms: Object.keys(a.permissions || {}).length ? a.permissions : Object.fromEntries(allKeys.map(k => [k, true])) }); };
+  const openEdit = (a: any) => { setOpenId(null); edit(a); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const recharge = (a: any) => { setOpenId(null); const d = prompt(t("روز شارژ", "Days to add"), "30"); if (d === null) return; const g = prompt(t("حجم شارژ (GB)", "GB to add"), "0"); if (g === null) return; const r = confirm(t("مصرف کاربران ریست شود؟", "Reset users' usage?")); void run(`/api/admins/${a.id}/recharge`, J("POST", { add_days: Number(d) || 0, add_traffic: Math.round((Number(g) || 0) * GB), reset_usage: r })); };
   const isAdmin = f?.role === "admin";
   return <Box className="panel">
     <HStack justify="space-between" mb={4}><Heading size="md">{t("ادمین‌ها", "Admins")}</Heading><Button size="md" colorScheme="blue" onClick={() => { setEditId(null); setF(empty); }}>{t("ادمین جدید", "New admin")}</Button></HStack>
@@ -263,17 +276,38 @@ export function AdminsTab(c: Ctx) {
           <F label={t("سقف روز هر کاربر", "Max user days")}><Input type="number" value={f.max_user_days} onChange={e => set("max_user_days", e.target.value)} /><Chips opts={[["30", "30"], ["60", "60"], ["90", "90"], ["365", "365"], ["∞", ""]]} onPick={v => set("max_user_days", v)} /></F>
         </SimpleGrid></>}
       <HStack mt={4}><Button colorScheme="blue" onClick={save}>{editId ? t("ذخیره", "Save") : t("ایجاد", "Create")}</Button><Button onClick={() => { setF(null); setEditId(null); }}>{t("انصراف", "Cancel")}</Button></HStack></Box>}
-    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>ID</Th><Th>{t("نام کاربری", "Username")}</Th><Th>{t("نقش", "Role")}</Th><Th>{t("سرویس‌ها", "Services")}</Th><Th>{t("وضعیت", "Status")}</Th><Th>{t("عملیات", "Actions")}</Th></Tr></Thead>
-      <Tbody>{(q.data || []).map((a: any) => <Tr key={a.id}><Td>{a.id}</Td><Td>{a.username}{a.telegram_id && <Text fontSize="xs" className="ltr muted">TG {a.telegram_id}</Text>}</Td><Td>{a.role === "sudo" ? t("مدیر اصلی", "Sudo") : t("ادمین", "Admin")}</Td><Td>{a.role === "sudo" ? t("همه", "All") : (a.allowed_services || []).map((id: number) => (sv.data || []).find((s: any) => s.id === id)?.display_name ?? id).join("، ") || "—"}</Td><Td><Badge colorScheme={a.state === "active" ? "green" : a.state === "disabled" ? "red" : "orange"}>{({ active: t("فعال", "on"), disabled: t("غیرفعال", "off"), expired: t("زمان تمام", "expired"), traffic_exhausted: t("حجم تمام", "no traffic") } as any)[a.state] ?? a.state}</Badge>{a.role !== "sudo" && <Text fontSize="xs" className="ltr">{(a.used_traffic / GB).toFixed(1)}/{a.max_total_traffic == null ? "∞" : (a.max_total_traffic / GB).toFixed(0)} GB{a.expire ? " · " + a.expire.slice(0, 10) : ""}</Text>}</Td>
-        <Td><HStack className="act-grp" flexWrap="wrap" spacing={0}>
-          {a.role !== "sudo" && <Button size="sm" colorScheme="blue" onClick={() => edit(a)}>{t("ویرایش دسترسی", "Edit access")}</Button>}
-          {a.role !== "sudo" && <Button size="sm" colorScheme="green" onClick={() => { const d = prompt(t("روز شارژ", "Days to add"), "30"); if (d === null) return; const g = prompt(t("حجم شارژ (GB)", "GB to add"), "0"); if (g === null) return; const r = confirm(t("مصرف کاربران ریست شود؟", "Reset users' usage?")); void run(`/api/admins/${a.id}/recharge`, J("POST", { add_days: Number(d) || 0, add_traffic: Math.round((Number(g) || 0) * GB), reset_usage: r })); }}>{t("شارژ", "Recharge")}</Button>}
-          <Button size="sm" onClick={() => run(`/api/admins/${a.id}`, J("PATCH", { disabled: !a.disabled }))}>{a.disabled ? t("فعال‌سازی", "Enable") : t("غیرفعال", "Disable")}</Button>
-          <Button size="sm" onClick={() => run(`/api/admins/${a.id}/users-status`, J("POST", { status: "disabled" }))}>{t("غیرفعال‌کردن کاربران", "Disable users")}</Button>
-          <Button size="sm" onClick={() => run(`/api/admins/${a.id}/users-status`, J("POST", { status: "active" }))}>{t("فعال‌کردن کاربران", "Enable users")}</Button>
-          {a.totp_enabled && <Button size="sm" onClick={() => confirm(t("2FA این ادمین غیرفعال شود؟", "Disable this admin's 2FA?")) && run(`/api/admins/${a.id}/reset-2fa`, J("POST"))}>{t("ریست 2FA", "Reset 2FA")}</Button>}
-          <Button size="sm" onClick={() => confirm(t("مصرف کاربران صفر شود؟", "Reset usage?")) && run(`/api/admins/${a.id}/reset-usage`, J("POST"))}>{t("ریست مصرف", "Reset usage")}</Button>
-        </HStack></Td></Tr>)}</Tbody></Table></Box>
+    <Text className="muted" fontSize="sm" mb={2}>{t("برای جزئیات و عملیات، روی هر ادمین ضربه بزنید.", "Tap an admin for details and actions.")}</Text>
+    <Box className="tscroll" overflowX="auto"><Table size="sm"><Thead><Tr><Th>{t("نام کاربری", "Username")}</Th><Th className="hide-sm">{t("نقش", "Role")}</Th><Th>{t("وضعیت", "Status")}</Th><Th>{t("مصرف / سهمیه", "Usage / quota")}</Th></Tr></Thead>
+      <Tbody>{(q.data || []).map((a: any) => <Tr key={a.id} cursor="pointer" _hover={{ bg: "blackAlpha.50", _dark: { bg: "whiteAlpha.100" } }} onClick={() => setOpenId(a.id)}>
+        <Td fontWeight={600} className="ltr">{a.username}</Td>
+        <Td className="hide-sm">{a.role === "sudo" ? t("مدیر اصلی", "Sudo") : t("ادمین", "Admin")}</Td>
+        <Td><Badge colorScheme={stTone(a.state)}>{stLbl(a.state)}</Badge></Td>
+        <Td minW="150px">{a.role === "sudo" ? "—" : <><Text fontSize="sm" className="ltr">{usageTxt(a)}</Text><Progress mt={1} value={usedPct(a)} size="xs" borderRadius="full" colorScheme={usedPct(a) > 90 ? "red" : usedPct(a) > 70 ? "orange" : "blue"} /></>}</Td></Tr>)}</Tbody></Table></Box>
+    <Modal isOpen={!!o} onClose={() => setOpenId(null)} isCentered scrollBehavior="inside"><ModalOverlay />
+      {o && <ModalContent mx={3}><ModalHeader pb={1}><HStack spacing={3} flexWrap="wrap"><Heading size="md" className="ltr" wordBreak="break-all">{o.username}</Heading><Badge colorScheme={stTone(o.state)}>{stLbl(o.state)}</Badge></HStack></ModalHeader><ModalCloseButton />
+        <ModalBody pb={5}>
+          {o.role !== "sudo" && <Box mb={3}><HStack justify="space-between" mb={1}><Text className="muted" fontSize="sm">{t("مصرف / سهمیه", "Usage / quota")}</Text><Text fontSize="sm" fontWeight={600} className="ltr">{usageTxt(o)}</Text></HStack><Progress value={usedPct(o)} size="sm" borderRadius="full" colorScheme={usedPct(o) > 90 ? "red" : usedPct(o) > 70 ? "orange" : "blue"} /></Box>}
+          <KV k={t("نقش", "Role")}>{o.role === "sudo" ? t("مدیر اصلی", "Sudo") : t("ادمین", "Admin")}</KV>
+          <KV k={t("سرویس‌های مجاز", "Allowed services")}>{svcNames(o)}</KV>
+          {o.role !== "sudo" && <>
+            <KV k={t("حداکثر کاربر", "Max users")}>{o.max_users ?? "∞"}</KV>
+            <KV k={t("سقف کل حجم", "Total traffic cap")}>{o.max_total_traffic == null ? "∞" : `${(o.max_total_traffic / GB).toFixed(0)} GB`}</KV>
+            <KV k={t("سقف حجم هر کاربر", "Per-user cap")}>{o.max_user_traffic == null ? "∞" : `${(o.max_user_traffic / GB).toFixed(0)} GB`}</KV>
+            <KV k={t("سقف روز هر کاربر", "Max user days")}>{o.max_user_days ?? "∞"}</KV>
+            <KV k={t("انقضای حساب", "Expiry")}>{o.expire ? o.expire.slice(0, 10) : t("نامحدود", "Never")}</KV></>}
+          <KV k={t("آیدی تلگرام", "Telegram ID")}><span className="ltr">{o.telegram_id || "—"}</span></KV>
+          <KV k="2FA">{o.totp_enabled ? t("فعال", "Enabled") : t("غیرفعال", "Disabled")}</KV>
+          {o.role !== "sudo" && <Button mt={4} w="100%" h="46px" colorScheme="blue" onClick={() => openEdit(o)}>{t("ویرایش دسترسی", "Edit access")}</Button>}
+          <SimpleGrid columns={2} spacing={2} mt={2}>
+            {o.role !== "sudo" && <Button h="44px" variant="outline" onClick={() => recharge(o)}>{t("شارژ", "Recharge")}</Button>}
+            <Button h="44px" variant="outline" onClick={() => run(`/api/admins/${o.id}`, J("PATCH", { disabled: !o.disabled }))}>{o.disabled ? t("فعال‌سازی", "Enable") : t("غیرفعال", "Disable")}</Button>
+            <Button h="44px" variant="outline" onClick={() => run(`/api/admins/${o.id}/users-status`, J("POST", { status: "active" }))}>{t("فعال‌کردن کاربران", "Enable users")}</Button>
+            <Button h="44px" variant="outline" onClick={() => confirm(t("مصرف کاربران صفر شود؟", "Reset usage?")) && run(`/api/admins/${o.id}/reset-usage`, J("POST"))}>{t("ریست مصرف", "Reset usage")}</Button>
+            {o.totp_enabled && <Button h="44px" variant="outline" onClick={() => confirm(t("2FA این ادمین غیرفعال شود؟", "Disable this admin's 2FA?")) && run(`/api/admins/${o.id}/reset-2fa`, J("POST"))}>{t("ریست 2FA", "Reset 2FA")}</Button>}
+          </SimpleGrid>
+          <Button mt={5} w="100%" h="44px" variant="outline" colorScheme="red" onClick={() => confirm(t("همه کاربران این ادمین غیرفعال شوند؟", "Disable all of this admin's users?")) && run(`/api/admins/${o.id}/users-status`, J("POST", { status: "disabled" }))}>{t("غیرفعال‌کردن کاربران", "Disable users")}</Button>
+        </ModalBody></ModalContent>}
+    </Modal>
     <Heading size="sm" mt={6} mb={2}>{t("تغییر رمز من", "Change my password")}</Heading>
     <HStack flexWrap="wrap"><Input maxW="240px" type="password" placeholder={t("رمز فعلی", "Current")} value={pw.current_password} onChange={e => setPw({ ...pw, current_password: e.target.value })} /><PwField w="460px" t={t} value={pw.new_password} onChange={v => setPw({ ...pw, new_password: v })} /><Button onClick={() => run("/api/admin/password", J("POST", pw), () => setPw({ current_password: "", new_password: "" }))}>{t("تغییر", "Change")}</Button></HStack>
   </Box>;
