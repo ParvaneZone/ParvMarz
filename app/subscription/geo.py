@@ -3,6 +3,7 @@ import ipaddress
 import logging
 from datetime import datetime, timezone
 import httpx
+from app.config import settings
 from app.core.netip import real_ip
 from app.db.models import SubAccess
 from app.db.session import SessionLocal
@@ -10,6 +11,7 @@ from app.db.session import SessionLocal
 log = logging.getLogger("jinxdata.geo")
 _mem: dict[str, dict] = {}
 MAX_IPS_PER_USER = 50  # SubAccess rows kept per user; the least recently seen are dropped first
+_warned_scheme = False
 
 
 def last_online(online_at, last_fetch):
@@ -27,6 +29,10 @@ def client_ip(request) -> str:
 
 
 async def _lookup(ip: str) -> dict:
+    """Country/region/city/ISP of a public IP, or {} (disabled, private address, non-https provider URL, or any failure)."""
+    global _warned_scheme
+    if not settings.geo_lookup_enabled:
+        return {}
     if ip in _mem:
         return _mem[ip]
     try:
@@ -34,10 +40,18 @@ async def _lookup(ip: str) -> dict:
             return {}
     except ValueError:
         return {}
+    url = (settings.geo_lookup_url or "").replace("{ip}", ip)
+    if not url.lower().startswith("https://"):
+        if not _warned_scheme:
+            _warned_scheme = True
+            log.warning("GEO_LOOKUP_URL must start with https://; geo lookup is skipped")
+        return {}
     try:
         async with httpx.AsyncClient(timeout=4) as c:
-            d = (await c.get(f"http://ip-api.com/json/{ip}", params={"fields": "status,country,regionName,city,isp", "lang": "fa"})).json()
-        r = {"country": d.get("country", ""), "region": d.get("regionName", ""), "city": d.get("city", ""), "isp": d.get("isp", "")} if d.get("status") == "success" else {}
+            d = (await c.get(url, params={"fields": "success,country,region,city,connection.isp"})).json()
+        conn = d.get("connection") if isinstance(d.get("connection"), dict) else {}
+        r = ({"country": d.get("country") or "", "region": d.get("region") or "", "city": d.get("city") or "", "isp": conn.get("isp") or ""}
+             if d.get("success") is True else {})
     except Exception as exc:
         log.warning("geo lookup failed for %s: %s", ip, exc)
         return {}

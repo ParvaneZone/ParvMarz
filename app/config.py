@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     sub_domain: str = ""
     sub_public_base_url: str = ""
     log_retention_days: int = 180  # usage/audit log pruning, 0 = keep forever
+    # Country/city lookup for the IPs that fetch a subscription. Every such IP is sent to the provider, so it can be switched
+    # off (GEO_LOOKUP_ENABLED=false) and the URL must be https. "{ip}" is replaced by the address; the response format is ipwho.is's.
+    geo_lookup_enabled: bool = True
+    geo_lookup_url: str = "https://ipwho.is/{ip}"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
