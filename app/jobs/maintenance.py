@@ -54,6 +54,7 @@ def compact_usage(db, now: datetime | None = None, max_days: int = 20) -> int:
     if days <= 0: return 0
     off = timedelta(minutes=settings.tz_offset_minutes)
     now = now or datetime.now(timezone.utc)
+    now = now.astimezone(timezone.utc).replace(tzinfo=None) if now.tzinfo else now  # naive UTC, like `day` below
     cutoff = (now + off - timedelta(days=max(days, 9))).replace(hour=0, minute=0, second=0, microsecond=0)
     first = db.query(func.min(UsageLog.recorded_at)).scalar()
     if first is None: return 0
