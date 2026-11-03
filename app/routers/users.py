@@ -7,6 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.security import require_sudo, require_perm
 from app.core.subtokens import issue_subscription_token
+from app.core.status import restore_active
 from app.db.models import Admin, User, Service, ServiceItem, Panel, PanelInbound, UserPanelAccount, SyncTask, AuditLog, UsageLog
 from app.db.session import get_db
 from app.core.plans import apply_next_plan
@@ -238,6 +239,7 @@ def reset_user(username:str,admin:Admin=Depends(require_perm('users.reset')),db:
  if not u: raise HTTPException(404,detail={'detail':'کاربر پیدا نشد','code':'USER_NOT_FOUND'})
  u.used_traffic=0
  for a in db.query(UserPanelAccount).filter_by(user_id=u.id).all(): db.add(SyncTask(user_id=u.id,panel_id=a.panel_id,action='reset_usage',payload={'username':a.remote_username}))
+ restore_active(db,u)
  db.add(AuditLog(actor_admin_id=admin.id,action='user.reset_usage',object_type='user',object_id=str(u.id),details={})); db.commit(); return {'ok':True}
 @router.post('/user/{username}/revoke_sub',response_model=OkOut,summary='ابطال و ساخت مجدد لینک اشتراک',responses=errs(401,403,404))
 def revoke_sub(username:str,admin:Admin=Depends(require_perm('users.revoke_sub')),db:Session=Depends(get_db)):
