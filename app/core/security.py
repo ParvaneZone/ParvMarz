@@ -11,7 +11,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.core.netip import real_ip
-from app.db.models import Admin, ApiKey
+from app.db.models import Admin, ApiKey, Setting
 from app.db.session import get_db
 
 bearer = HTTPBearer(auto_error=False)
@@ -53,8 +53,24 @@ def create_access_token(admin: Admin) -> str:
     now = datetime.now(timezone.utc)
     return jwt.encode({"sub": str(admin.id), "username": admin.username, "role": admin.role,
                        "iat": now, "exp": now + timedelta(minutes=settings.jwt_expire_minutes),
+                       "jti": secrets.token_hex(16),  # unique id, so logout can revoke exactly this token
                        "password_reset_at": admin.password_reset_at.isoformat() if admin.password_reset_at else None},
                       settings.jwt_secret, algorithm="HS256")
+
+
+def revoke_token(db: Session, token: str) -> bool:
+    """Deny-list one login token (logout). The row is only needed until the token would expire anyway
+    (maintenance prunes it). Tokens issued before jti existed, expired or invalid ones are ignored."""
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+    except Exception:
+        return False
+    jti = payload.get("jti")
+    if not jti:
+        return False
+    db.merge(Setting(key=f"revoked:{jti}", value={"exp": int(payload.get("exp", 0))}))
+    db.commit()
+    return True
 
 
 KEY_PREFIX = "pmk_"
@@ -136,6 +152,9 @@ def current_admin(
         raise HTTPException(401, detail={"detail": "توکن نامعتبر است", "code": "INVALID_TOKEN"})
     if admin.password_reset_at and payload.get("password_reset_at") != admin.password_reset_at.isoformat():
         raise HTTPException(401, detail={"detail": "رمز تغییر کرده؛ دوباره وارد شوید", "code": "TOKEN_REVOKED"})
+    jti = payload.get("jti")
+    if jti and db.get(Setting, f"revoked:{jti}"):
+        raise HTTPException(401, detail={"detail": "نشست بسته شده؛ دوباره وارد شوید", "code": "TOKEN_REVOKED"})
     request.state.auth_via = "jwt"
     return admin
 
