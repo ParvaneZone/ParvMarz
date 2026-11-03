@@ -3,6 +3,7 @@ import hmac
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 import bcrypt
 import jwt
 from fastapi import Depends, Header, HTTPException, Request
@@ -29,6 +30,13 @@ def verify_password(password: str, hashed: str) -> bool:
         return bcrypt.checkpw(_pw(password), hashed.encode())
     except (ValueError, TypeError):
         return False
+
+
+@lru_cache(maxsize=1)
+def dummy_hash() -> str:
+    """bcrypt hash of a throwaway value. Checked when a username does not exist, so the response time
+    does not reveal which usernames are real."""
+    return hash_password(secrets.token_urlsafe(16))
 
 
 SESSION_COOKIE = "jx_session"
