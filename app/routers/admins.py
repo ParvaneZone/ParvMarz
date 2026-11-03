@@ -8,6 +8,7 @@ from sqlalchemy import func
 from pydantic import field_validator
 from app.core.security import require_sudo, hash_password, admin_state, strong_password
 from app.core.crypto import encrypt_secret
+from app.core.status import restore_active
 from app.db.models import AdminPanelAccess, Panel
 from app.db.models import Admin, User, AuditLog, Service, SyncTask, UserPanelAccount
 from app.core.permissions import CATALOG, KEYS
@@ -128,7 +129,7 @@ def reset_admin_2fa(admin_id:int, actor:Admin=Depends(require_sudo), db:Session=
 def reset_admin_usage(admin_id:int, actor:Admin=Depends(require_sudo), db:Session=Depends(get_db)):
     if not db.get(Admin,admin_id): raise HTTPException(404,detail={'detail':'ادمین پیدا نشد','code':'ADMIN_NOT_FOUND'})
     users=db.query(User).filter(User.admin_id==admin_id).all()
-    for u in users: u.used_traffic=0
+    for u in users: u.used_traffic=0; restore_active(db,u)
     db.add(AuditLog(actor_admin_id=actor.id,action='admin.reset_usage',object_type='admin',object_id=str(admin_id),details={'count':len(users)})); db.commit()
     return {'reset':len(users)}
 
@@ -209,7 +210,7 @@ def recharge_admin(admin_id:int, body:Recharge, actor:Admin=Depends(require_sudo
         a.expire=max(cur,now)+timedelta(days=body.add_days)
     if body.add_traffic and a.max_total_traffic is not None: a.max_total_traffic+=body.add_traffic
     if body.reset_usage:
-        for u in db.query(User).filter(User.admin_id==admin_id).all(): u.used_traffic=0
+        for u in db.query(User).filter(User.admin_id==admin_id).all(): u.used_traffic=0; restore_active(db,u)
     db.add(AuditLog(actor_admin_id=actor.id,action='admin.recharge',object_type='admin',object_id=str(admin_id),details=body.model_dump())); db.commit()
     if a.telegram_id: notify_event('admin.recharged',{'username':a.username,'add_days':body.add_days or None,'add_traffic':f'{body.add_traffic/1024**3:.1f} GB' if body.add_traffic else None,'expire':a.expire.strftime('%Y-%m-%d') if a.expire else None,'admin_id':a.id})
     return {'ok':True,'state':admin_state(a,db),'expire':a.expire,'max_total_traffic':a.max_total_traffic}
