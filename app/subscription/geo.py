@@ -3,6 +3,7 @@ import ipaddress
 import logging
 from datetime import datetime, timezone
 import httpx
+from app.config import settings
 from app.core.netip import real_ip
 from app.db.models import SubAccess
 from app.db.session import SessionLocal
@@ -27,6 +28,8 @@ def client_ip(request) -> str:
 
 
 async def _lookup(ip: str) -> dict:
+    if not settings.geo_lookup_enabled:
+        return {}
     if ip in _mem:
         return _mem[ip]
     try:
@@ -36,7 +39,7 @@ async def _lookup(ip: str) -> dict:
         return {}
     try:
         async with httpx.AsyncClient(timeout=4) as c:
-            d = (await c.get(f"http://ip-api.com/json/{ip}", params={"fields": "status,country,regionName,city,isp", "lang": "fa"})).json()
+            d = (await c.get(settings.geo_lookup_url.replace("{ip}", ip), params={"fields": "status,country,regionName,city,isp", "lang": "fa"})).json()
         r = {"country": d.get("country", ""), "region": d.get("regionName", ""), "city": d.get("city", ""), "isp": d.get("isp", "")} if d.get("status") == "success" else {}
     except Exception as exc:
         log.warning("geo lookup failed for %s: %s", ip, exc)
