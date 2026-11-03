@@ -31,6 +31,17 @@ def verify_password(password: str, hashed: str) -> bool:
         return False
 
 
+_dummy_hash: str | None = None
+
+
+def burn_password_time(password: str) -> None:
+    """Spend the same bcrypt time as a real check, so unknown usernames can't be told apart by response time."""
+    global _dummy_hash
+    if _dummy_hash is None:
+        _dummy_hash = hash_password("not-a-real-password")
+    verify_password(password, _dummy_hash)
+
+
 SESSION_COOKIE = "jx_session"
 
 
