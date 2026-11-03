@@ -4,11 +4,6 @@ import { ChakraProvider, useColorMode, Checkbox, Box, Heading, Text, SimpleGrid,
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import QRCode from "qrcode";
 import "./style.css";
-import { PanelsTab, ServicesTab, TemplatesTab, AdminsTab, SystemTab, UserEditModal, BulkBar, InboundsTab, DashboardTab } from "./Manage";
-import { AccountTab } from "./Account";
-import { UsageTab } from "./Usage";
-import { ActionsTab, LiveTab, GeoTab, DiagnosticsTab } from "./Ops";
-import { GuideTab } from "./Guide";
 import { UsersList } from "./UsersList";
 import { Icon } from "./Icon";
 import { Logo } from "./Brand";
@@ -18,6 +13,25 @@ import { api, errMsg, subUrl } from "./api";
 import { NAV_GROUPS, TAB_IDS, canOpen } from "./nav";
 import type { Prefs } from "./theme";
 import { loadPrefs, savePrefs, normPrefs, applyPrefs, buildTheme, isDark } from "./theme";
+
+// Tabs and heavy modals are loaded on demand so the first paint (login / users list) ships a much smaller bundle.
+const lz=(load:()=>Promise<any>,name:string)=>React.lazy(()=>load().then(m=>({default:m[name] as React.ComponentType<any>})));
+const PanelsTab=lz(()=>import("./Manage"),"PanelsTab");
+const ServicesTab=lz(()=>import("./Manage"),"ServicesTab");
+const TemplatesTab=lz(()=>import("./Manage"),"TemplatesTab");
+const AdminsTab=lz(()=>import("./Manage"),"AdminsTab");
+const SystemTab=lz(()=>import("./Manage"),"SystemTab");
+const InboundsTab=lz(()=>import("./Manage"),"InboundsTab");
+const DashboardTab=lz(()=>import("./Manage"),"DashboardTab");
+const UserEditModal=lz(()=>import("./Manage"),"UserEditModal");
+const BulkBar=lz(()=>import("./Manage"),"BulkBar");
+const AccountTab=lz(()=>import("./Account"),"AccountTab");
+const UsageTab=lz(()=>import("./Usage"),"UsageTab");
+const ActionsTab=lz(()=>import("./Ops"),"ActionsTab");
+const LiveTab=lz(()=>import("./Ops"),"LiveTab");
+const GeoTab=lz(()=>import("./Ops"),"GeoTab");
+const DiagnosticsTab=lz(()=>import("./Ops"),"DiagnosticsTab");
+const GuideTab=lz(()=>import("./Guide"),"GuideTab");
 
 type User = {id:number; username:string; admin_id:number; service_id:number; status:string; data_limit:number|null; used_traffic:number; expire:string|null; note:string; subscription_url:string|null; created_at?:string};
 type Panel = {id:number;name:string;type:string;base_url:string;enabled:boolean;status:string;last_ok_at:string|null;last_error:string|null};
@@ -63,8 +77,9 @@ function App({prefs,setPrefs}:{prefs:Prefs;setPrefs:(p:Prefs)=>void}){
  if(!token) return <Box className={`shell ${theme}`} dir={fa?"rtl":"ltr"}><Box className="login"><VStack spacing={2} mb={2}><Logo size={84}/><Heading>Jinx Data</Heading></VStack><Text className="muted" mb={6} textAlign="center">{t("ورود به پنل مدیریت اشتراک","Sign in to subscription management")}</Text><VStack spacing={3}>{!need2fa?<><Input placeholder={t("نام کاربری","Username")} value={username} onChange={e=>setUsername(e.target.value)}/><Input placeholder={t("رمز عبور","Password")} type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()}/></>:<><Text className="muted" fontSize="sm" alignSelf="flex-start">{t("کد ۶ رقمی Google Authenticator یا یک کد بازیابی","6-digit Google Authenticator code or a recovery code")}</Text><Input className="ltr" autoFocus inputMode="text" autoComplete="one-time-code" placeholder="123456" value={otp} onChange={e=>setOtp(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()}/></>}<Button colorScheme="blue" width="100%" onClick={login}>{need2fa?t("تأیید و ورود","Verify & sign in"):t("ورود","Sign in")}</Button>{need2fa&&<Button variant="link" onClick={()=>{setNeed2fa(false);setOtp("")}}>{t("بازگشت","Back")}</Button>}<HStack><Button variant="ghost" onClick={()=>setLang(fa?"en":"fa")}>{fa?"English":"فارسی"}</Button><Button variant="ghost" onClick={nextTheme}>{themeLabel}</Button></HStack></VStack></Box></Box>;
  return <Box className={`shell ${theme}`} dir={fa?"rtl":"ltr"}>
  <HStack className="hdr" justify="space-between" mb={6} flexWrap="wrap" spacing={3}><HStack spacing={3}><Button variant="outline" aria-label={t("منو","Menu")} onClick={()=>setMenu(true)}><Icon name="menu"/></Button><Logo size={44}/><Box><Heading size="lg">Jinx Data</Heading><Text className="muted">{t("پنل مرکزی مدیریت اشتراک","Central subscription management")}</Text></Box></HStack><HStack flexWrap="wrap" spacing={2}><Button variant="outline" leftIcon={<Icon name="globe"/>} onClick={()=>setLang(fa?"en":"fa")}>{fa?"English":"فارسی"}</Button><Button variant="outline" leftIcon={<Icon name={theme==="light"?"sun":"moon"}/>} onClick={nextTheme}>{themeLabel}</Button><Button variant="outline" aria-label={t("رنگ‌ها","Colors")} title={t("پالت رنگ","Color palette")} onClick={()=>setTab("account")}><Icon name="palette"/></Button><Button variant="outline" leftIcon={<Icon name="logout"/>} onClick={logout}>{t("خروج","Logout")}</Button></HStack></HStack>
- <QrModal url={qrUrl} onClose={()=>setQrUrl("")}/><UserEditModal c={ctx} user={editUser} onClose={()=>setEditUser(null)}/>
+ <QrModal url={qrUrl} onClose={()=>setQrUrl("")}/>{editUser&&<React.Suspense fallback={null}><UserEditModal c={ctx} user={editUser} onClose={()=>setEditUser(null)}/></React.Suspense>}
  <Drawer isOpen={menu} placement={fa?"right":"left"} onClose={()=>setMenu(false)}><DrawerOverlay/><DrawerContent><DrawerCloseButton/><DrawerHeader fontWeight={800}><HStack spacing={3}><Logo size={34}/><span>Jinx Data</span></HStack></DrawerHeader><DrawerBody>{NAV_GROUPS.map(g=>{const v=g.items.filter(i=>open(i.id));return v.length?<Box key={g.en} mb={4}><Text className="menu-sec">{t(g.fa,g.en)}</Text><VStack align="stretch" spacing={1}>{v.map(i=><Button key={i.id} justifyContent="flex-start" fontWeight={tab===i.id?700:500} leftIcon={<Icon name={i.icon}/>} variant={tab===i.id?"solid":"ghost"} colorScheme={tab===i.id?"blue":"gray"} onClick={()=>i.action==="docs"?void downloadDocs():setTab(i.id)}>{t(i.fa,i.en)}</Button>)}</VStack></Box>:null})}</DrawerBody></DrawerContent></Drawer>
+ <React.Suspense fallback={<Box className="panel"><Text className="muted">{t("در حال بارگذاری…","Loading…")}</Text></Box>}>
  {tab==="dashboard"&&open("dashboard")&&<DashboardTab {...ctx}/>}
  {tab==="inbounds"&&open("inbounds")&&<InboundsTab {...ctx}/>}
  {tab==="users"&&<Box className="panel"><HStack justify="space-between" mb={4} flexWrap="wrap"><Heading size="md">{t("کاربران","Users")}</Heading>{can("users.create")&&<Button colorScheme="blue" onClick={()=>setShowCreate(!showCreate)}>{t("کاربر جدید","New user")}</Button>}</HStack>
@@ -73,7 +88,7 @@ function App({prefs,setPrefs}:{prefs:Prefs;setPrefs:(p:Prefs)=>void}){
  {adv&&<SimpleGrid mt={3} columns={{base:1,md:2}} spacing={4}>{can("users.create_note")&&<FormControl><FormLabel>{t("یادداشت","Note")}</FormLabel><Input name="note"/></FormControl>}{can("users.create_bulk")&&<FormControl><FormLabel>{t("تعداد (ساخت گروهی؛ نام = پیشوند+شماره)","Count (bulk; name = prefix+number)")}</FormLabel><Input name="count" type="number" min="1" max="100" defaultValue="1"/></FormControl>}{can("users.create_reset_strategy")&&<FormControl><FormLabel>{t("ریست حجم","Reset")}</FormLabel><Select name="reset" defaultValue="no_reset">{["no_reset","day","week","month","year"].map(x=><option key={x}>{x}</option>)}</Select></FormControl>}{can("users.create_expire_date")&&<FormControl><FormLabel>{t("تاریخ انقضا (به‌جای مدت)","Expire date (overrides days)")}</FormLabel><Input name="expire" type="date"/></FormControl>}{can("users.on_hold")&&<FormControl display="flex" alignItems="center" gap={3}><Switch name="on_hold"/><FormLabel m={0}>{t("شروع با اولین اتصال","Start on first connection")}</FormLabel></FormControl>}</SimpleGrid>}
  <HStack mt={5}><Button type="submit" colorScheme="blue">{t("ایجاد","Create")}</Button><Button onClick={()=>setShowCreate(false)}>{t("انصراف","Cancel")}</Button></HStack></Box>}
  <HStack mb={4} flexWrap="wrap" spacing={2} align="stretch"><Input flex="1 1 180px" placeholder={t("جست‌وجوی نام کاربری","Search username")} value={search} onChange={e=>filt(()=>setSearch(e.target.value))}/><Select maxW="220px" value={status} onChange={e=>filt(()=>setStatus(e.target.value))}><option value="">{t("همه وضعیت‌ها","All statuses")}</option>{["active","disabled","limited","expired","on_hold"].map(s=><option key={s} value={s}>{stLabel(s)}</option>)}</Select>{isSudo&&<Select maxW="220px" value={fAdmin} onChange={e=>filt(()=>setFAdmin(e.target.value))}><option value="">{t("همه ادمین‌ها","All admins")}</option>{(adminsQ.data||[]).map((a:any)=><option key={a.id} value={a.id}>{a.username}</option>)}</Select>}<Select maxW="220px" value={fService} onChange={e=>filt(()=>setFService(e.target.value))}><option value="">{t("همه سرویس‌ها","All services")}</option>{(services.data||[]).map((s:Service)=><option key={s.id} value={s.id}>{s.display_name||s.name}</option>)}</Select><Select maxW="220px" value={sort} onChange={e=>filt(()=>setSort(e.target.value))}><option value="-id">{t("جدیدترین","Newest")}</option><option value="-used_traffic">{t("مصرف","Usage")}</option><option value="expire">{t("انقضا","Expiry")}</option><option value="username">{t("نام","Name")}</option></Select><Button onClick={()=>void users.refetch()}>{t("بروزرسانی","Refresh")}</Button></HStack>
- {isSudo&&<BulkBar c={ctx} ids={sel} clear={()=>setSel([])}/>}<UsersList c={ctx} loading={users.isLoading} items={users.data?.items||[]} isSudo={isSudo} can={can} sel={sel} setSel={setSel} stLabel={stLabel} subUrl={subUrl} onEdit={setEditUser} onQr={setQrUrl} action={action} meName={me.data?.username}/>
+ {isSudo&&sel.length>0&&<BulkBar c={ctx} ids={sel} clear={()=>setSel([])}/>}<UsersList c={ctx} loading={users.isLoading} items={users.data?.items||[]} isSudo={isSudo} can={can} sel={sel} setSel={setSel} stLabel={stLabel} subUrl={subUrl} onEdit={setEditUser} onQr={setQrUrl} action={action} meName={me.data?.username}/>
  <HStack mt={4} justify="space-between"><Button variant="outline" isDisabled={page===0} onClick={()=>{setPage(page-1);setSel([])}}>{t("قبلی","Previous")}</Button><Text fontSize="sm" className="ltr">{pageFrom}-{pageTo} / {total}</Text><Button variant="outline" isDisabled={pageTo>=total} onClick={()=>{setPage(page+1);setSel([])}}>{t("بعدی","Next")}</Button></HStack></Box>}
  {tab==="account"&&<AccountTab c={ctx} prefs={prefs} setPrefs={setPrefs}/>}
  {tab==="panels"&&open("panels")&&<PanelsTab {...ctx}/>}
@@ -87,6 +102,7 @@ function App({prefs,setPrefs}:{prefs:Prefs;setPrefs:(p:Prefs)=>void}){
  {tab==="diagnostics"&&open("diagnostics")&&<DiagnosticsTab {...ctx}/>}
  {tab==="system"&&open("system")&&<SystemTab {...ctx}/>}
  {tab==="guide"&&<GuideTab t={t} isSudo={isSudo}/>}
+ </React.Suspense>
  <Text mt={6} fontSize="sm" className="muted">Jinx Data</Text></Box>;
 }
 const client=new QueryClient({defaultOptions:{queries:{refetchOnWindowFocus:false,staleTime:10_000,gcTime:120_000,retry:1}}});
