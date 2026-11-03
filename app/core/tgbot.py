@@ -19,6 +19,7 @@ from app.db.session import SessionLocal
 
 log = logging.getLogger("jinxdata.tgbot")
 _bot_name: str | None = None
+_BACKUP_CMDS = {"/backup", "/backuptime", "/backupon", "/backupoff"}
 
 
 def _h(code: str) -> str:
@@ -81,8 +82,15 @@ def handle_text(chat_id: str, text: str) -> str | None:
         me = db.query(Admin).filter(Admin.telegram_id == chat_id).first()
         if cmd == "/start" and arg: return _link(db, chat_id, arg)
         if cmd == "/start" or cmd == "/help":
-            if me and not me.disabled: return f"سلام {me.username} 👋\n/status وضعیت اکانت\n/stop قطع اتصال"
+            if me and not me.disabled:
+                extra = "\n/backup پشتیبان فوری\n/backuptime 03:30 ساعت پشتیبان روزانه\n/backupoff · /backupon" if me.role == "sudo" else ""
+                return f"سلام {me.username} 👋\n/status وضعیت اکانت\n/stop قطع اتصال{extra}"
             return "برای دریافت پیام‌ها، در پنل بخش «اکانت من ← ربات تلگرام» لینک اتصال بگیرید و اینجا باز کنید."
+        if cmd in _BACKUP_CMDS:
+            sudo = (me and not me.disabled and me.role == "sudo") or (settings.telegram_admin_chat_id and chat_id == str(settings.telegram_admin_chat_id))
+            if not sudo: return "این دستور فقط برای مدیر اصلی است."
+            from app.jobs.backup import bot_command
+            return bot_command(cmd, arg, chat_id)
         if not me or me.disabled: return "اتصال برقرار نیست؛ ابتدا از پنل لینک اتصال بگیرید."
         if cmd == "/status": return _status(db, me)
         if cmd == "/stop":
