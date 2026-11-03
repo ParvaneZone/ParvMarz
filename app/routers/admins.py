@@ -9,7 +9,7 @@ from pydantic import field_validator
 from app.core.security import require_sudo, hash_password, admin_state, strong_password
 from app.core.crypto import encrypt_secret
 from app.db.models import AdminPanelAccess, Panel
-from app.db.models import Admin, User, AuditLog, Service
+from app.db.models import Admin, User, AuditLog, Service, SyncTask, UserPanelAccount
 from app.core.permissions import CATALOG, KEYS
 from app.db.session import get_db
 from app.core.notify import notify_event
@@ -108,8 +108,14 @@ def admin_users_status(admin_id:int, body:dict, actor:Admin=Depends(require_sudo
     status=body.get('status')
     if status not in ('active','disabled','limited','on_hold'): raise HTTPException(422,detail={'detail':'وضعیت نامعتبر است','code':'INVALID_STATUS'})
     users=db.query(User).filter(User.admin_id==admin_id).all()
-    for u in users: u.status=status
-    db.add(AuditLog(actor_admin_id=actor.id,action='admin.users_status',object_type='admin',object_id=str(admin_id),details={'status':status,'count':len(users)})); db.commit()
+    accounts={}
+    for acc in db.query(UserPanelAccount).join(User,User.id==UserPanelAccount.user_id).filter(User.admin_id==admin_id).all(): accounts.setdefault(acc.user_id,[]).append(acc)
+    tasks=0
+    for u in users:
+        u.status=status
+        for acc in accounts.get(u.id,[]):  # push the change to the backend panels, not just the local DB
+            db.add(SyncTask(user_id=u.id,panel_id=acc.panel_id,action='modify',payload={'username':acc.remote_username,'status':status})); tasks+=1
+    db.add(AuditLog(actor_admin_id=actor.id,action='admin.users_status',object_type='admin',object_id=str(admin_id),details={'status':status,'count':len(users),'sync_tasks':tasks})); db.commit()
     return {'updated':len(users)}
 
 @router.post('/{admin_id}/reset-2fa')
