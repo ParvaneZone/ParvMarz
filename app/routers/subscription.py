@@ -110,8 +110,10 @@ def _wants_page(request:Request)->bool:
  ua=(request.headers.get('user-agent') or '').lower()
  return 'text/html' in (request.headers.get('accept') or '').lower() and ua.startswith('mozilla') and not any(k in ua for k in _APP_UA)
 def _public_base(request:Request)->str:
+ """Configured public URL only. The Host header is attacker-controlled, so it is never used: without a real PUBLIC_BASE_URL
+ (unset or localhost) this returns '' and links stay relative."""
  base=settings.sub_base_url if settings.split_mode else (settings.public_base_url or '').rstrip('/')
- return base if base and 'localhost' not in base and '127.0.0.1' not in base else str(request.base_url).rstrip('/')
+ return base if base and 'localhost' not in base and '127.0.0.1' not in base else ''
 def _qr_svg(text:str)->str:
  try:
   import segno
