@@ -11,7 +11,9 @@ services:
       - path: .env
         required: false
     ports:
-      # Behind a reverse proxy set PANEL_BIND=127.0.0.1 so clients cannot reach the panel directly and forge proxy headers.
+      # Direct access (install.sh default): PANEL_BIND=0.0.0.0 with TRUST_PROXY_HEADERS=false, so proxy headers are ignored.
+      # Behind a reverse proxy set PANEL_BIND=127.0.0.1 so clients cannot reach the panel directly and forge proxy headers;
+      # only then set TRUST_PROXY_HEADERS=true and list the proxy address in TRUSTED_PROXY_IPS.
       - "${PANEL_BIND:-0.0.0.0}:${PANEL_PORT:-${PORT:-8000}}:8000"
       - "${SUB_BIND:-127.0.0.1}:${SUB_PORT:-8001}:8001"
     volumes:
