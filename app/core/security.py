@@ -31,6 +31,18 @@ def verify_password(password: str, hashed: str) -> bool:
         return False
 
 
+_DUMMY_HASH: str | None = None
+
+
+def dummy_hash() -> str:
+    """A valid bcrypt hash of a random secret. Login verifies against it for unknown usernames, so the response time
+    does not reveal which usernames exist."""
+    global _DUMMY_HASH
+    if _DUMMY_HASH is None:
+        _DUMMY_HASH = hash_password(secrets.token_hex(16))
+    return _DUMMY_HASH
+
+
 SESSION_COOKIE = "jx_session"
 
 

@@ -12,7 +12,7 @@ from app.config import settings
 from app.core.netip import real_ip
 from app.core import totp
 from app.core.crypto import decrypt_secret, encrypt_secret
-from app.core.security import hash_password, verify_password, create_access_token, current_admin, session_admin, SESSION_COOKIE, strong_password
+from app.core.security import hash_password, verify_password, dummy_hash, create_access_token, current_admin, session_admin, SESSION_COOKIE, strong_password
 from app.db.models import Admin, AuditLog, Service, User, Setting
 from app.core.notify import notify_event
 from app.db.session import get_db
@@ -105,7 +105,10 @@ def login(body: LoginInput, request: Request, response: Response, db: Session = 
         raise _err(401, detail, code)
 
     admin = db.query(Admin).filter(func.lower(Admin.username) == body.username.lower()).first()
-    if not admin or admin.disabled or not verify_password(body.password, admin.password_hash):
+    # Always run exactly one bcrypt check (against a dummy hash when the username does not exist or is disabled-checked later),
+    # so the response time does not reveal which usernames are real.
+    password_ok = verify_password(body.password, admin.password_hash if admin else dummy_hash())
+    if not admin or admin.disabled or not password_ok:
         fail("نام کاربری یا رمز عبور نادرست است", "BAD_CREDENTIALS")
     if admin.totp_enabled:
         otp = (body.otp or "").strip()
