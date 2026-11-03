@@ -80,11 +80,15 @@ def _check_second_factor(admin: Admin, code: str, db: Session) -> bool:
 def login(body: LoginInput, request: Request, response: Response, db: Session = Depends(get_db)):
     limited = settings.login_rate_limit_enabled
     ip = real_ip(request)
-    key = f"{ip}:{body.username.lower()}"
+    uname = body.username.lower()
+    key = f"{ip}:{uname}"
+    ukey = f"user:{uname}"  # username-only counter (all IPs)
     now = time.time()
     attempts = [t for t in _lock_get(db, key) if now - t < settings.login_lock_seconds] if limited else []
-    if limited and len(attempts) >= settings.login_max_attempts:
-        raise HTTPException(429, detail={"detail": "تلاش‌های ورود زیاد است؛ ۱۵ دقیقه بعد دوباره تلاش کنید", "code": "LOGIN_LOCKED"})
+    u_attempts = [t for t in _lock_get(db, ukey) if now - t < settings.login_user_lock_seconds] if limited else []
+    if limited and (len(attempts) >= settings.login_max_attempts or len(u_attempts) >= settings.login_user_max_attempts):
+        mins = max(1, (settings.login_lock_seconds if len(attempts) >= settings.login_max_attempts else settings.login_user_lock_seconds) // 60)
+        raise HTTPException(429, detail={"detail": f"تلاش‌های ورود زیاد است؛ {mins} دقیقه بعد دوباره تلاش کنید", "code": "LOGIN_LOCKED"})
 
     admin = None
 
@@ -92,8 +96,11 @@ def login(body: LoginInput, request: Request, response: Response, db: Session = 
         if limited:
             attempts.append(now)
             _lock_set(db, key, attempts)
+            u_attempts.append(now)
+            _lock_set(db, ukey, u_attempts)
         if admin is not None:  # only for real accounts (unknown usernames would let anyone spam the chat)
-            ev = "admin.locked" if limited and len(attempts) >= settings.login_max_attempts else "admin.login_failed"
+            locked = len(attempts) >= settings.login_max_attempts or len(u_attempts) >= settings.login_user_max_attempts
+            ev = "admin.locked" if limited and locked else "admin.login_failed"
             notify_event(ev, {"username": admin.username, "ip": ip, "reason": code, "admin_id": admin.id})
         raise _err(401, detail, code)
 
@@ -107,6 +114,7 @@ def login(body: LoginInput, request: Request, response: Response, db: Session = 
         if not _check_second_factor(admin, otp, db):
             fail("کد دو مرحله‌ای نادرست است", "BAD_OTP")
     if limited and attempts: _lock_set(db, key, [])
+    if limited and u_attempts: _lock_set(db, ukey, [])
     notify_event("admin.login", {"username": admin.username, "ip": ip, "time": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"), "admin_id": admin.id})
     tok = create_access_token(admin)
     secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").split(",")[0].strip() == "https" or bool(settings.panel_domain)

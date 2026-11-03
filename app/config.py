@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     login_rate_limit_enabled: bool = True
     login_max_attempts: int = 5
     login_lock_seconds: int = 900
+    # Per-username cap across all IPs (stops distributed brute force). Temporary: it expires after login_user_lock_seconds,
+    # so it cannot lock a legitimate admin out for good.
+    login_user_max_attempts: int = 20
+    login_user_lock_seconds: int = 900
     # Separate listeners: when SUB_PORT is set the subscription page lives on its own port/app and the
     # panel app serves no /sub at all (so the sub page can never lead to the panel address).
     sub_port: int | None = None
