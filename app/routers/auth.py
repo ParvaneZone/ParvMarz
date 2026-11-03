@@ -12,7 +12,7 @@ from app.config import settings
 from app.core.netip import real_ip
 from app.core import totp
 from app.core.crypto import decrypt_secret, encrypt_secret
-from app.core.security import hash_password, verify_password, burn_password_time, create_access_token, current_admin, session_admin, SESSION_COOKIE, strong_password
+from app.core.security import hash_password, verify_password, burn_password_time, create_access_token, revoke_token, current_admin, session_admin, SESSION_COOKIE, strong_password
 from app.db.models import Admin, AuditLog, Service, User, Setting
 from app.core.notify import notify_event
 from app.db.session import get_db
@@ -125,7 +125,11 @@ def login(body: LoginInput, request: Request, response: Response, db: Session = 
 
 
 @router.post("/logout")
-def logout(response: Response):
+def logout(request: Request, response: Response, db: Session = Depends(get_db)):
+    auth = request.headers.get("authorization", "")
+    tok = request.cookies.get(SESSION_COOKIE) or (auth[7:].strip() if auth[:7].lower() == "bearer " else "")
+    if tok:
+        revoke_token(db, tok)  # the JWT stops working immediately, not only when it expires
     response.delete_cookie(SESSION_COOKIE, path="/")
     return {"ok": True}
 
