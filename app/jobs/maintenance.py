@@ -46,7 +46,7 @@ def delete_old_expired() -> int:
 def prune_data() -> dict:
     """Keep the DB and RAM small over months: stale sub-cache / login-lock rows and old usage/audit logs."""
     import time
-    from app.db.models import UsageLog
+    from app.db.models import SubAccess, UsageLog
     now = time.time(); out = {}
     with SessionLocal() as db:
         n = 0
@@ -56,13 +56,14 @@ def prune_data() -> dict:
                 db.delete(row); n += 1
         for row in db.query(Setting).filter(Setting.key.like("login:%")).all():
             ts = (row.value or {}).get("t", []) if isinstance(row.value, dict) else []
-            if not ts or max(ts) < now - max(settings.login_lock_seconds, 900):
+            if not ts or max(ts) < now - max(settings.login_lock_seconds, settings.login_user_lock_seconds, 900):
                 db.delete(row); n += 1
         out["settings"] = n
         if settings.log_retention_days > 0:
             cutoff = datetime.now(timezone.utc) - timedelta(days=settings.log_retention_days)
             out["usage"] = db.query(UsageLog).filter(UsageLog.recorded_at < cutoff).delete(synchronize_session=False)
             out["audit"] = db.query(AuditLog).filter(AuditLog.created_at < cutoff).delete(synchronize_session=False)
+            out["sub_access"] = db.query(SubAccess).filter(SubAccess.last_seen < cutoff).delete(synchronize_session=False)
         db.commit()
     return out
 

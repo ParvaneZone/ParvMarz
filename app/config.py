@@ -13,7 +13,10 @@ class Settings(BaseSettings):
     public_base_url: str = "http://localhost:8000"
     cors_origins: str = ""
     openapi_enabled: bool = False
-    trust_proxy_headers: bool = True  # panel sits behind Cloudflare/nginx; firewall the origin to the proxy only
+    # Off by default. When on, proxy headers are accepted only from direct peers listed in TRUSTED_PROXY_IPS
+    # (comma-separated IPs/CIDRs, e.g. "127.0.0.1,172.18.0.0/16"); empty list = headers are never trusted.
+    trust_proxy_headers: bool = False
+    trusted_proxy_ips: str = ""
     panel_allow_private_addresses: bool = True
     sync_interval_seconds: int = 60
     log_level: str = "INFO"
@@ -28,6 +31,10 @@ class Settings(BaseSettings):
     login_rate_limit_enabled: bool = True
     login_max_attempts: int = 5
     login_lock_seconds: int = 900
+    # Per-username cap across all IPs (stops distributed brute force). Temporary: it expires after login_user_lock_seconds,
+    # so it cannot lock a legitimate admin out for good.
+    login_user_max_attempts: int = 20
+    login_user_lock_seconds: int = 900
     # Separate listeners: when SUB_PORT is set the subscription page lives on its own port/app and the
     # panel app serves no /sub at all (so the sub page can never lead to the panel address).
     sub_port: int | None = None

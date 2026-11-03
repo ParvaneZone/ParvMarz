@@ -3,11 +3,13 @@ import ipaddress
 import logging
 from datetime import datetime, timezone
 import httpx
+from app.core.netip import real_ip
 from app.db.models import SubAccess
 from app.db.session import SessionLocal
 
 log = logging.getLogger("jinxdata.geo")
 _mem: dict[str, dict] = {}
+MAX_IPS_PER_USER = 50  # SubAccess rows kept per user; the least recently seen are dropped first
 
 
 def last_online(online_at, last_fetch):
@@ -17,9 +19,11 @@ def last_online(online_at, last_fetch):
 
 
 def client_ip(request) -> str:
-    h = request.headers
-    ip = (h.get("cf-connecting-ip") or h.get("x-real-ip") or (h.get("x-forwarded-for") or "").split(",")[0] or (request.client.host if request.client else "")).strip()
-    return ip
+    """Validated client IP: proxy headers only count when netip.real_ip trusts them; anything that is not a real IP gives ''."""
+    try:
+        return str(ipaddress.ip_address(real_ip(request)))
+    except ValueError:
+        return ""
 
 
 async def _lookup(ip: str) -> dict:
@@ -54,6 +58,11 @@ async def record_access(user_id: int, ip: str, inbound_names: list[str]) -> None
             if row:
                 row.hits += 1; row.last_seen = now; row.inbounds = inbound_names
             else:
+                total = db.query(SubAccess).filter_by(user_id=user_id).count()
+                if total >= MAX_IPS_PER_USER:  # make room for the new row
+                    old = (db.query(SubAccess.id).filter_by(user_id=user_id)
+                           .order_by(SubAccess.last_seen.asc(), SubAccess.id.asc()).limit(total - MAX_IPS_PER_USER + 1).all())
+                    db.query(SubAccess).filter(SubAccess.id.in_([i for (i,) in old])).delete(synchronize_session=False)
                 row = SubAccess(user_id=user_id, ip=ip, inbounds=inbound_names, first_seen=now, last_seen=now)
                 db.add(row)
             db.commit()
