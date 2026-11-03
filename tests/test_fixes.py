@@ -73,7 +73,10 @@ def test_reports_audit_csv():
 def test_login_lock_persists_in_db():
     c, S, tok = make()
     for _ in range(5): c.post("/api/admin/token", json={"username": "ag", "password": "bad"})
-    with S() as db: assert db.query(models.Setting).filter(models.Setting.key.like("login:%")).count() == 1
+    with S() as db:
+        keys = {k for (k,) in db.query(models.Setting.key).filter(models.Setting.key.like("login:%"))}
+    # one row for the ip+username counter and one for the username-only counter (all IPs)
+    assert len(keys) == 2 and "login:user:ag" in keys
 
 
 def test_admin_create_errors_are_specific():
