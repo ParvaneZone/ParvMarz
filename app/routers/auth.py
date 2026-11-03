@@ -79,12 +79,19 @@ def _check_second_factor(admin: Admin, code: str, db: Session) -> bool:
              responses=errs(401, 429))
 def login(body: LoginInput, request: Request, response: Response, db: Session = Depends(get_db)):
     limited = settings.login_rate_limit_enabled
+    user_capped = limited and settings.login_user_max_attempts > 0
     ip = real_ip(request)
-    key = f"{ip}:{body.username.lower()}"
+    uname = body.username.lower()
+    key = f"{ip}:{uname}"
+    ukey = f"user|{uname}"  # per-username counter (any IP): bounds distributed brute force
     now = time.time()
     attempts = [t for t in _lock_get(db, key) if now - t < settings.login_lock_seconds] if limited else []
-    if limited and len(attempts) >= settings.login_max_attempts:
-        raise HTTPException(429, detail={"detail": "تلاش‌های ورود زیاد است؛ ۱۵ دقیقه بعد دوباره تلاش کنید", "code": "LOGIN_LOCKED"})
+    uattempts = [t for t in _lock_get(db, ukey) if now - t < settings.login_user_lock_seconds] if user_capped else []
+    ip_locked = limited and len(attempts) >= settings.login_max_attempts
+    user_locked = user_capped and len(uattempts) >= settings.login_user_max_attempts
+    if ip_locked or user_locked:
+        minutes = max(1, -(-(settings.login_lock_seconds if ip_locked else settings.login_user_lock_seconds) // 60))
+        raise HTTPException(429, detail={"detail": f"تلاش‌های ورود زیاد است؛ {minutes} دقیقه بعد دوباره تلاش کنید", "code": "LOGIN_LOCKED"})
 
     admin = None
 
@@ -92,8 +99,13 @@ def login(body: LoginInput, request: Request, response: Response, db: Session = 
         if limited:
             attempts.append(now)
             _lock_set(db, key, attempts)
+        if user_capped:
+            uattempts.append(now)
+            _lock_set(db, ukey, uattempts)
         if admin is not None:  # only for real accounts (unknown usernames would let anyone spam the chat)
-            ev = "admin.locked" if limited and len(attempts) >= settings.login_max_attempts else "admin.login_failed"
+            locked_now = limited and len(attempts) >= settings.login_max_attempts
+            locked_now = locked_now or (user_capped and len(uattempts) >= settings.login_user_max_attempts)
+            ev = "admin.locked" if locked_now else "admin.login_failed"
             notify_event(ev, {"username": admin.username, "ip": ip, "reason": code, "admin_id": admin.id})
         raise _err(401, detail, code)
 

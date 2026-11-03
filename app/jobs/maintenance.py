@@ -56,7 +56,7 @@ def prune_data() -> dict:
                 db.delete(row); n += 1
         for row in db.query(Setting).filter(Setting.key.like("login:%")).all():
             ts = (row.value or {}).get("t", []) if isinstance(row.value, dict) else []
-            if not ts or max(ts) < now - max(settings.login_lock_seconds, 900):
+            if not ts or max(ts) < now - max(settings.login_lock_seconds, settings.login_user_lock_seconds, 900):
                 db.delete(row); n += 1
         out["settings"] = n
         if settings.log_retention_days > 0:
