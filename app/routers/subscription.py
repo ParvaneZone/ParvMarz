@@ -3,6 +3,7 @@ import base64
 import json
 import secrets
 import time
+from datetime import timezone
 from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
@@ -80,7 +81,7 @@ async def _remote_links(user_id:int, token_version:int)->tuple[list[str],dict]:
    db.commit()
  return links,gm
 
-def _ts(v): return int(v.timestamp()) if v else None
+def _ts(v): return int((v if v.tzinfo else v.replace(tzinfo=timezone.utc)).timestamp()) if v else None  # naive datetimes are UTC
 def _load_user(token:str):
  claims=verify_subscription_token(token)
  if not claims: raise HTTPException(404,'Subscription not found')
@@ -110,8 +111,8 @@ def _wants_page(request:Request)->bool:
  ua=(request.headers.get('user-agent') or '').lower()
  return 'text/html' in (request.headers.get('accept') or '').lower() and ua.startswith('mozilla') and not any(k in ua for k in _APP_UA)
 def _public_base(request:Request)->str:
- base=settings.sub_base_url if settings.split_mode else (settings.public_base_url or '').rstrip('/')
- return base if base and 'localhost' not in base and '127.0.0.1' not in base else str(request.base_url).rstrip('/')
+ """Configured public URL only: the client-controlled Host header is never used to build links."""
+ return settings.sub_base_url if settings.split_mode else (settings.public_base_url or '').rstrip('/')
 def _qr_svg(text:str)->str:
  try:
   import segno

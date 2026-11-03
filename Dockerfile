@@ -28,8 +28,10 @@ COPY --from=reqs /r/requirements.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     if [ -z "$PIP_INDEX_URL" ]; then unset PIP_INDEX_URL; fi; \
     pip install -r /tmp/requirements.txt
+# unprivileged runtime user; docker-entrypoint.sh drops to it (set RUN_AS_ROOT=1 to keep root)
+RUN useradd --system --uid 10001 --home-dir /app --shell /usr/sbin/nologin app
 COPY docker-entrypoint.sh ./
-RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh && mkdir -p /app/data
+RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh && mkdir -p /app/data && chown app:app /app/data
 COPY --from=frontend /src/app/dashboard/dist ./app/dashboard/dist
 COPY pyproject.toml alembic.ini ./
 COPY app ./app

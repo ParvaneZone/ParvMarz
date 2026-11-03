@@ -10,7 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.core.netip import real_ip
-from app.db.models import Admin, ApiKey
+from app.db.models import Admin, ApiKey, Setting
 from app.db.session import get_db
 
 bearer = HTTPBearer(auto_error=False)
@@ -31,6 +31,17 @@ def verify_password(password: str, hashed: str) -> bool:
         return False
 
 
+_dummy_hash: str | None = None
+
+
+def burn_password_time(password: str) -> None:
+    """Spend the same bcrypt time as a real check, so unknown usernames can't be told apart by response time."""
+    global _dummy_hash
+    if _dummy_hash is None:
+        _dummy_hash = hash_password("not-a-real-password")
+    verify_password(password, _dummy_hash)
+
+
 SESSION_COOKIE = "jx_session"
 
 
@@ -45,8 +56,26 @@ def create_access_token(admin: Admin) -> str:
     now = datetime.now(timezone.utc)
     return jwt.encode({"sub": str(admin.id), "username": admin.username, "role": admin.role,
                        "iat": now, "exp": now + timedelta(minutes=settings.jwt_expire_minutes),
+                       "jti": secrets.token_urlsafe(12),
                        "password_reset_at": admin.password_reset_at.isoformat() if admin.password_reset_at else None},
                       settings.jwt_secret, algorithm="HS256")
+
+
+def revoke_token(db: Session, token: str) -> None:
+    """Logout: deny this JWT until it would have expired anyway. Expired deny-list rows are pruned here."""
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+    except Exception:
+        return
+    jti = payload.get("jti")
+    if not jti:
+        return
+    now = time.time()
+    for row in db.query(Setting).filter(Setting.key.like("revoked:%")).all():
+        if isinstance(row.value, dict) and row.value.get("exp", 0) < now:
+            db.delete(row)
+    db.merge(Setting(key="revoked:" + jti, value={"exp": payload.get("exp", now)}))
+    db.commit()
 
 
 KEY_PREFIX = "pmk_"
@@ -126,6 +155,8 @@ def current_admin(
         payload = {}
     if not admin or admin.disabled:
         raise HTTPException(401, detail={"detail": "توکن نامعتبر است", "code": "INVALID_TOKEN"})
+    if payload.get("jti") and db.get(Setting, "revoked:" + payload["jti"]):
+        raise HTTPException(401, detail={"detail": "از حساب خارج شده‌اید؛ دوباره وارد شوید", "code": "TOKEN_REVOKED"})
     if admin.password_reset_at and payload.get("password_reset_at") != admin.password_reset_at.isoformat():
         raise HTTPException(401, detail={"detail": "رمز تغییر کرده؛ دوباره وارد شوید", "code": "TOKEN_REVOKED"})
     request.state.auth_via = "jwt"

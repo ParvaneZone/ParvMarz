@@ -51,7 +51,11 @@ async def sync_usage()->dict:
      delta=traffic_delta(current,acc.last_remote_used_traffic)
      acc.last_remote_used_traffic=current; acc.last_synced_at=datetime.now(timezone.utc)
      if delta:
-      touched.add(uid); user.used_traffic+=delta; user.online_at=datetime.now(timezone.utc); db.add(UsageLog(user_id=uid,delta=delta,total_after=user.used_traffic,admin_id=user.admin_id,panel_id=pid,service_id=user.service_id))
+      touched.add(uid)
+      # atomic in SQL (used_traffic = used_traffic + delta) so a concurrent writer's change is not overwritten
+      db.query(User).filter(User.id==uid).update({User.used_traffic:User.used_traffic+delta},synchronize_session=False)
+      db.refresh(user)
+      user.online_at=datetime.now(timezone.utc); db.add(UsageLog(user_id=uid,delta=delta,total_after=user.used_traffic,admin_id=user.admin_id,panel_id=pid,service_id=user.service_id))
      reason=None
      if user.status!='active': pass
      elif user.data_limit is not None and user.used_traffic>=user.data_limit: user.status='limited'; reason='traffic limit reached'

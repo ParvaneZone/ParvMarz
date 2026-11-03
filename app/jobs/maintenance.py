@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from app.config import settings
 from app.core.notify import notify_event
+from app.core.timeutil import utc_ts
 from sqlalchemy import func
 from app.db.models import Admin, Setting, SyncTask, User, UserPanelAccount, AuditLog
 from app.db.session import SessionLocal
@@ -13,7 +14,7 @@ def warn_expiring() -> int:
         rows = db.query(User).filter(User.status == "active", User.expire.is_not(None), User.expire > now,
                                      User.expire <= now + timedelta(days=settings.expiry_warn_days)).all()
         for u in rows:
-            key = f"warned:{u.id}"; stamp = int(u.expire.timestamp())
+            key = f"warned:{u.id}"; stamp = utc_ts(u.expire)
             s = db.get(Setting, key)
             if s and s.value.get("expire") == stamp:
                 continue

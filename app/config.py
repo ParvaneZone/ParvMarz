@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     sub_domain: str = ""
     sub_public_base_url: str = ""
     log_retention_days: int = 180  # usage/audit log pruning, 0 = keep forever
+    # Subscriber IP -> country/ISP lookup. GEO_LOOKUP_ENABLED=false stops client IPs being sent to a third party.
+    # GEO_LOOKUP_URL must answer like ip-api.com's JSON; the free ip-api.com endpoint is plain HTTP only,
+    # so point it at an HTTPS ip-api-compatible endpoint (e.g. a paid plan) if you need transport encryption.
+    geo_lookup_enabled: bool = True
+    geo_lookup_url: str = "http://ip-api.com/json/{ip}"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
