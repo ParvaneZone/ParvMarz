@@ -14,6 +14,7 @@ import { Icon } from "./Icon";
 import { Logo } from "./Brand";
 import { BgScene, useScrollMotion } from "./Motion";
 import { copyText } from "./copy";
+import { api, errMsg, subUrl } from "./api";
 import type { IconName } from "./Icon";
 import type { Prefs } from "./theme";
 import { loadPrefs, savePrefs, normPrefs, applyPrefs, buildTheme, isDark } from "./theme";
@@ -23,21 +24,6 @@ type Panel = {id:number;name:string;type:string;base_url:string;enabled:boolean;
 type Service = {id:number;name:string;display_name:string;enabled:boolean;description:string};
 try{localStorage.removeItem("jx_token");localStorage.removeItem("subhub_token")}catch{} // session lives in an HttpOnly cookie now: nothing for XSS to steal
 const PAGE_SIZE = 50;
-const api = async (path:string, init:RequestInit={}) => {
- const response=await fetch(path,{...init,credentials:"same-origin",headers:{"Content-Type":"application/json","X-Requested-With":"jx",...(init.headers||{})}});
- const data=await response.json().catch(()=>({}));
- if(!response.ok){
-  const d=data?.detail; let text="";
-  if(typeof d==="string") text=d;
-  else if(Array.isArray(d)) text=d.map((x:any)=>`${(x.loc||[]).filter((p:string)=>!["body","query"].includes(p)).join(".")||"body"}: ${x.msg}`).join("؛ ");
-  else if(d&&typeof d==="object") text=d.detail||JSON.stringify(d);
-  const code=d&&typeof d==="object"&&d.code?` [${d.code}]`:"";
-  throw new Error((text||`HTTP ${response.status}`)+code+` (${init.method||"GET"} ${path} → ${response.status})`);
- }
- return data;
-};
-const subUrl=(u:{subscription_url:string|null})=>/^https?:\/\//.test(u.subscription_url||"")?String(u.subscription_url):location.origin+u.subscription_url;
-const errMsg=(e:unknown)=>e instanceof Error?e.message:String(e);
 const faStatus:Record<string,string>={active:"فعال",disabled:"غیرفعال",limited:"محدود",expired:"منقضی",on_hold:"در انتظار",healthy:"سالم",unhealthy:"ناسالم",down:"قطع",unknown:"نامشخص"};
 function QrModal({url,onClose}:{url:string;onClose:()=>void}){const [img,setImg]=React.useState("");React.useEffect(()=>{if(url)void QRCode.toDataURL(url,{width:320,margin:2}).then(setImg)},[url]);return <Modal isOpen={!!url} onClose={onClose} isCentered><ModalOverlay/><ModalContent><ModalHeader>QR</ModalHeader><ModalCloseButton/><ModalBody pb={6}>{img&&<Image src={img} mx="auto" mb={3}/>}<Input readOnly value={url} onFocus={e=>e.currentTarget.select()}/></ModalBody></ModalContent></Modal>}
 
