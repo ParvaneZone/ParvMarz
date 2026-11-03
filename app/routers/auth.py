@@ -4,6 +4,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -12,7 +13,7 @@ from app.config import settings
 from app.core.netip import real_ip
 from app.core import totp
 from app.core.crypto import decrypt_secret, encrypt_secret
-from app.core.security import hash_password, verify_password, dummy_hash, create_access_token, current_admin, session_admin, SESSION_COOKIE, strong_password
+from app.core.security import hash_password, verify_password, dummy_hash, create_access_token, revoke_token, bearer, KEY_PREFIX, current_admin, session_admin, SESSION_COOKIE, strong_password
 from app.db.models import Admin, AuditLog, Service, User, Setting
 from app.core.notify import notify_event
 from app.db.session import get_db
@@ -126,7 +127,12 @@ def login(body: LoginInput, request: Request, response: Response, db: Session = 
 
 
 @router.post("/logout")
-def logout(response: Response):
+def logout(request: Request, response: Response, creds: HTTPAuthorizationCredentials | None = Depends(bearer),
+           db: Session = Depends(get_db)):
+    """Ends the session: the cookie is cleared AND the token (cookie and/or Bearer) is deny-listed, so a copied token stops working."""
+    for token in {creds.credentials if creds else None, request.cookies.get(SESSION_COOKIE)}:
+        if token and not token.startswith(KEY_PREFIX):
+            revoke_token(db, token)
     response.delete_cookie(SESSION_COOKIE, path="/")
     return {"ok": True}
 
