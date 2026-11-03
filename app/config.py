@@ -44,6 +44,17 @@ class Settings(BaseSettings):
     sub_domain: str = ""
     sub_public_base_url: str = ""
     log_retention_days: int = 180  # usage/audit log pruning, 0 = keep forever
+    # Long-term size limits (see app/jobs/maintenance.py)
+    sub_access_retention_days: int = 60   # per-IP subscription access rows, 0 = keep forever
+    sync_task_retention_days: int = 3     # finished outbox tasks (failed ones are kept 30 days), 0 = keep forever
+    usage_compact_days: int = 10          # usage rows older than this are merged into one row per user/panel/day (min 9), 0 = off
+    tz_offset_minutes: int = 210          # local time offset used for usage day boundaries and backup time (Iran = 210)
+    # Daily database backup sent by the Telegram bot (time/enabled can be changed from the bot: /backuptime, /backupoff)
+    backup_enabled: bool = True
+    backup_time: str = "03:00"            # local HH:MM
+    backup_keep: int = 7                  # local copies kept in data/backups
+    backup_send_telegram: bool = True
+    backup_part_mb: int = 45              # Telegram bots upload max 50 MB; bigger backups are split into parts of this size
     # Subscriber IP -> country/ISP lookup. GEO_LOOKUP_ENABLED=false stops client IPs being sent to a third party.
     # GEO_LOOKUP_URL must answer like ip-api.com's JSON; the free ip-api.com endpoint is plain HTTP only,
     # so point it at an HTTPS ip-api-compatible endpoint (e.g. a paid plan) if you need transport encryption.

@@ -12,6 +12,15 @@ def traffic_delta(current:int, previous:int)->int:
     current=max(0,int(current)); previous=max(0,int(previous))
     return current-previous if current>=previous else 0
 
+def add_usage(db,user,panel_id:int,delta:int,now:datetime)->None:
+ # One row per user+panel(+admin/service) per 30 minutes (added into the open slot) instead of one row per sync:
+ # usage_logs grows ~30x slower and reports stay exact (hour buckets, also for half-hour timezones).
+ slot=now.replace(minute=0 if now.minute<30 else 30,second=0,microsecond=0)
+ row=(db.query(UsageLog).filter(UsageLog.user_id==user.id,UsageLog.panel_id==panel_id,UsageLog.admin_id==user.admin_id,
+      UsageLog.service_id==user.service_id,UsageLog.recorded_at>=slot).order_by(UsageLog.id.desc()).first())
+ if row: row.delta+=delta; row.total_after=user.used_traffic; return
+ db.add(UsageLog(user_id=user.id,delta=delta,total_after=user.used_traffic,recorded_at=slot,admin_id=user.admin_id,panel_id=panel_id,service_id=user.service_id))
+
 _last_run:dict={}
 async def sync_usage()->dict:
  processed=0; touched=set(); now_m=datetime.now(timezone.utc)
@@ -55,7 +64,7 @@ async def sync_usage()->dict:
       # atomic in SQL (used_traffic = used_traffic + delta) so a concurrent writer's change is not overwritten
       db.query(User).filter(User.id==uid).update({User.used_traffic:User.used_traffic+delta},synchronize_session=False)
       db.refresh(user)
-      user.online_at=datetime.now(timezone.utc); db.add(UsageLog(user_id=uid,delta=delta,total_after=user.used_traffic,admin_id=user.admin_id,panel_id=pid,service_id=user.service_id))
+      user.online_at=datetime.now(timezone.utc); add_usage(db,user,pid,delta,user.online_at)
      reason=None
      if user.status!='active': pass
      elif user.data_limit is not None and user.used_traffic>=user.data_limit: user.status='limited'; reason='traffic limit reached'
