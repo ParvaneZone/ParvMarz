@@ -10,7 +10,9 @@ def _next_reset(now, strategy):
  if strategy=='month':
   year=now.year+(now.month==12); month=1 if now.month==12 else now.month+1
   return now.replace(year=year,month=month,day=min(now.day,monthrange(year,month)[1]))
- if strategy=='year': return now.replace(year=now.year+1)
+ if strategy=='year':
+  year=now.year+1  # Feb 29 -> Feb 28 in a non-leap year instead of raising
+  return now.replace(year=year,day=min(now.day,monthrange(year,now.month)[1]))
  return None
 
 def reset_usage_job()->dict:
