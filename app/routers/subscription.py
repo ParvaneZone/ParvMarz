@@ -95,7 +95,8 @@ def _tpl(admin_id)->str:
  from app.subscription.themes import resolve_template
  with SessionLocal() as db: return resolve_template(db,admin_id)
 def _inactive(u)->bool:
- return u['status']!='active' or bool(u['expire'] and u['expire']<=int(time.time())) or (u['limit'] is not None and u['used']>=u['limit'])
+ # on_hold users have no expiry yet (it starts at the first connection), so they must still get configs to be able to connect
+ return u['status'] not in ('active','on_hold') or bool(u['expire'] and u['expire']<=int(time.time())) or (u['limit'] is not None and u['used']>=u['limit'])
 def _page_state(u)->str:
  if u['status']=='active':
   if u['expire'] and u['expire']<=int(time.time()): return 'expired'
