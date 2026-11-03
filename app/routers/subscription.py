@@ -3,6 +3,7 @@ import base64
 import json
 import secrets
 import time
+from datetime import timezone
 from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
@@ -80,7 +81,7 @@ async def _remote_links(user_id:int, token_version:int)->tuple[list[str],dict]:
    db.commit()
  return links,gm
 
-def _ts(v): return int(v.timestamp()) if v else None
+def _ts(v): return int((v if v.tzinfo else v.replace(tzinfo=timezone.utc)).timestamp()) if v else None  # naive datetimes are UTC
 def _load_user(token:str):
  claims=verify_subscription_token(token)
  if not claims: raise HTTPException(404,'Subscription not found')
