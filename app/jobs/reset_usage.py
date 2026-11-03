@@ -1,5 +1,6 @@
 from datetime import datetime, timezone, timedelta
 from calendar import monthrange
+from app.core.status import restore_active
 from app.db.models import User, UserPanelAccount, SyncTask
 from app.db.session import SessionLocal
 
@@ -26,6 +27,7 @@ def reset_usage_job()->dict:
     continue
    u.used_traffic=0
    for a in db.query(UserPanelAccount).filter_by(user_id=u.id).all(): db.add(SyncTask(user_id=u.id,panel_id=a.panel_id,action='reset_usage',payload={'username':a.remote_username}))
+   restore_active(db,u)
    nxt=_next_reset(now,u.data_limit_reset_strategy)
    if nxt: db.merge(Setting(key=key,value={'next':nxt.timestamp()}))
    count+=1
