@@ -11,7 +11,7 @@ services:
       - path: .env
         required: false
     ports:
-      - "${PANEL_PORT:-${PORT:-8000}}:8000"
+      - "${PANEL_BIND:-0.0.0.0}:${PANEL_PORT:-${PORT:-8000}}:8000"
       - "${SUB_BIND:-127.0.0.1}:${SUB_PORT:-8001}:8001"
     volumes:
       - subhub_data:/app/data

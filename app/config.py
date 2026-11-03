@@ -13,7 +13,10 @@ class Settings(BaseSettings):
     public_base_url: str = "http://localhost:8000"
     cors_origins: str = ""
     openapi_enabled: bool = False
-    trust_proxy_headers: bool = True  # panel sits behind Cloudflare/nginx; firewall the origin to the proxy only
+    # Proxy headers (CF-Connecting-IP / X-Real-IP / X-Forwarded-For) are only honoured when this is on AND the
+    # direct TCP peer is listed in TRUSTED_PROXY_IPS (comma-separated IPs/CIDRs). Off by default.
+    trust_proxy_headers: bool = False
+    trusted_proxy_ips: str = ""
     panel_allow_private_addresses: bool = True
     sync_interval_seconds: int = 60
     log_level: str = "INFO"
@@ -55,6 +58,17 @@ class Settings(BaseSettings):
             except Exception as exc:
                 raise ValueError("CREDENTIALS_ENCRYPTION_KEY must be a valid Fernet key") from exc
         return self
+
+    @field_validator("trusted_proxy_ips")
+    @classmethod
+    def _check_trusted_proxies(cls, v: str) -> str:
+        import ipaddress
+        for item in (x.strip() for x in (v or "").split(",") if x.strip()):
+            try:
+                ipaddress.ip_network(item, strict=False)
+            except ValueError as exc:
+                raise ValueError(f"TRUSTED_PROXY_IPS: invalid IP or CIDR {item!r}") from exc
+        return v
 
     @field_validator("sub_port", mode="before")
     @classmethod
