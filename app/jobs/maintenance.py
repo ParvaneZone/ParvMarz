@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from app.config import settings
 from app.core.notify import notify_event
 from sqlalchemy import func
-from app.db.models import Admin, Setting, SyncTask, User, UserPanelAccount, AuditLog
+from app.db.models import Admin, Setting, SubAccess, SyncTask, User, UserPanelAccount, AuditLog
 from app.db.session import SessionLocal
 
 
@@ -63,6 +63,7 @@ def prune_data() -> dict:
             cutoff = datetime.now(timezone.utc) - timedelta(days=settings.log_retention_days)
             out["usage"] = db.query(UsageLog).filter(UsageLog.recorded_at < cutoff).delete(synchronize_session=False)
             out["audit"] = db.query(AuditLog).filter(AuditLog.created_at < cutoff).delete(synchronize_session=False)
+            out["sub_access"] = db.query(SubAccess).filter(SubAccess.last_seen < cutoff).delete(synchronize_session=False)
         db.commit()
     return out
 
