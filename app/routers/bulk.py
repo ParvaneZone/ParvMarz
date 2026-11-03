@@ -5,6 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.core.security import require_perm
 from app.core.status import restore_active
+from app.core.timeutil import utc_ts
 from app.db.models import Admin, User, UserPanelAccount, SyncTask, AuditLog
 from app.db.session import get_db
 router=APIRouter(prefix='/api/bulk',tags=['bulk'])
@@ -18,7 +19,7 @@ def _rows(db,actor,ids):
  return q.all()
 def _modify(db,u):
  for a in db.query(UserPanelAccount).filter_by(user_id=u.id).all():
-  db.add(SyncTask(user_id=u.id,panel_id=a.panel_id,action='modify',payload={'username':a.remote_username,'data_limit':u.data_limit,'status':u.status,'expire':int(u.expire.timestamp()) if u.expire else 0}))
+  db.add(SyncTask(user_id=u.id,panel_id=a.panel_id,action='modify',payload={'username':a.remote_username,'data_limit':u.data_limit,'status':u.status,'expire':utc_ts(u.expire) if u.expire else 0}))
 def _aware(d): return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
 
 @router.post('/status')
