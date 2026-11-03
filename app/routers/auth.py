@@ -4,6 +4,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -12,7 +13,8 @@ from app.config import settings
 from app.core.netip import real_ip
 from app.core import totp
 from app.core.crypto import decrypt_secret, encrypt_secret
-from app.core.security import hash_password, verify_password, dummy_hash, create_access_token, current_admin, session_admin, SESSION_COOKIE, strong_password
+from app.core.security import (hash_password, verify_password, dummy_hash, create_access_token, current_admin, session_admin,
+                               SESSION_COOKIE, KEY_PREFIX, bearer, revoke_token, strong_password)
 from app.db.models import Admin, AuditLog, Service, User, Setting
 from app.core.notify import notify_event
 from app.db.session import get_db
@@ -105,8 +107,8 @@ def login(body: LoginInput, request: Request, response: Response, db: Session = 
         raise _err(401, detail, code)
 
     admin = db.query(Admin).filter(func.lower(Admin.username) == body.username.lower()).first()
-    # Always run exactly one bcrypt check (against a dummy hash when the username does not exist or is disabled-checked later),
-    # so the response time does not reveal which usernames are real.
+    # Always run exactly one bcrypt check (against a dummy hash when the username does not exist), so the response
+    # time does not reveal which usernames are real.
     password_ok = verify_password(body.password, admin.password_hash if admin else dummy_hash())
     if not admin or admin.disabled or not password_ok:
         fail("نام کاربری یا رمز عبور نادرست است", "BAD_CREDENTIALS")
@@ -126,7 +128,11 @@ def login(body: LoginInput, request: Request, response: Response, db: Session = 
 
 
 @router.post("/logout")
-def logout(response: Response):
+def logout(request: Request, response: Response, creds: HTTPAuthorizationCredentials | None = Depends(bearer), db: Session = Depends(get_db)):
+    """Ends the session: the cookie is removed and the token itself is denylisted, so a copied token stops working too."""
+    token = (creds.credentials if creds else None) or request.cookies.get(SESSION_COOKIE)
+    if token and not token.startswith(KEY_PREFIX):
+        revoke_token(db, token)
     response.delete_cookie(SESSION_COOKIE, path="/")
     return {"ok": True}
 

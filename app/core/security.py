@@ -10,7 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.core.netip import real_ip
-from app.db.models import Admin, ApiKey
+from app.db.models import Admin, ApiKey, Setting
 from app.db.session import get_db
 
 bearer = HTTPBearer(auto_error=False)
@@ -57,8 +57,31 @@ def create_access_token(admin: Admin) -> str:
     now = datetime.now(timezone.utc)
     return jwt.encode({"sub": str(admin.id), "username": admin.username, "role": admin.role,
                        "iat": now, "exp": now + timedelta(minutes=settings.jwt_expire_minutes),
+                       "jti": secrets.token_hex(16),
                        "password_reset_at": admin.password_reset_at.isoformat() if admin.password_reset_at else None},
                       settings.jwt_secret, algorithm="HS256")
+
+
+REVOKED_PREFIX = "revoked:"
+
+
+def revoke_token(db: Session, token: str) -> bool:
+    """Logout: denylist this token's jti until the token would have expired anyway. Invalid/expired tokens and tokens
+    issued before jti existed are ignored (they cannot be told apart per token; they expire on their own)."""
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+    except Exception:
+        return False
+    jti = payload.get("jti")
+    if not isinstance(jti, str) or not jti:
+        return False
+    now = time.time()
+    for row in db.query(Setting).filter(Setting.key.like(REVOKED_PREFIX + "%")).all():  # drop entries whose token is expired already
+        if not isinstance(row.value, dict) or row.value.get("exp", 0) < now:
+            db.delete(row)
+    db.merge(Setting(key=REVOKED_PREFIX + jti, value={"exp": int(payload.get("exp") or now + 3600)}))
+    db.commit()
+    return True
 
 
 KEY_PREFIX = "pmk_"
@@ -140,6 +163,9 @@ def current_admin(
         raise HTTPException(401, detail={"detail": "توکن نامعتبر است", "code": "INVALID_TOKEN"})
     if admin.password_reset_at and payload.get("password_reset_at") != admin.password_reset_at.isoformat():
         raise HTTPException(401, detail={"detail": "رمز تغییر کرده؛ دوباره وارد شوید", "code": "TOKEN_REVOKED"})
+    jti = payload.get("jti")
+    if jti and db.get(Setting, REVOKED_PREFIX + str(jti)) is not None:
+        raise HTTPException(401, detail={"detail": "این نشست بسته شده؛ دوباره وارد شوید", "code": "TOKEN_REVOKED"})
     request.state.auth_via = "jwt"
     return admin
 
